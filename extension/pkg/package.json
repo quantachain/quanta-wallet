@@ -1,0 +1,16 @@
+{
+  "name": "quanta-wasm",
+  "type": "module",
+  "description": "WASM bindings for QuantaChain PQC wallet operations",
+  "version": "0.1.0",
+  "files": [
+    "quanta_wasm_bg.wasm",
+    "quanta_wasm.js",
+    "quanta_wasm.d.ts"
+  ],
+  "main": "quanta_wasm.js",
+  "types": "quanta_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
