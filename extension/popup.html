@@ -362,6 +362,21 @@
     </div>
   </div>
 
+  <div id="add-account-panel" class="side-panel bottom-up" style="z-index:102;">
+    <div class="panel-header">
+      <h3>Import Account</h3><button class="close-panel" data-panel="add-account-panel">✕</button>
+    </div>
+    <div class="panel-body">
+      <p class="subtitle" style="margin-bottom:16px;font-size:0.85rem;color:var(--text-secondary);">Enter the 24-word recovery phrase for the account you want to add. Your existing wallet and password are not affected.</p>
+      <div class="form-group">
+        <label>Recovery Phrase (24 words)</label>
+        <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24" style="font-family:var(--mono);font-size:0.82rem;"></textarea>
+      </div>
+      <div id="add-account-error" class="error-msg hidden"></div>
+      <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import Account</button>
+    </div>
+  </div>
+
   <div id="overlay" class="overlay hidden"></div>
   <div id="toast" class="toast hidden"></div>
 

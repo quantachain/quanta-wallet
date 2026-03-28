@@ -211,7 +211,11 @@ input[type="number"] {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
 }
 .network-pill:hover { background: var(--bg-2); }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); animation: livePulse 2s ease-in-out infinite; }
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+}
 
 .balance-area { display: flex; flex-direction: column; align-items: center; padding: 16px 20px 24px; flex-shrink: 0; }
 .logo-top { width: 44px; height: 44px; margin-bottom: 16px; display: flex; justify-content: center; align-items: center; }
@@ -266,6 +270,7 @@ input[type="number"] {
   transition: background 0.15s;
 }
 .tx-item:hover { background: var(--bg-2); }
+.tx-pending { border-left: 2px solid #f59e0b !important; }
 
 .tx-icon {
   width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
