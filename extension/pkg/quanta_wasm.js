@@ -1,9 +1,8 @@
 /* @ts-self-types="./quanta_wasm.d.ts" */
 
 /**
- * Compute the canonical signing hash for a given transaction payload.
- * Useful for hardware wallet integrations.
- * Returns 32-byte hash as hex.
+ * Compute the canonical signing hash for a given payload (debugging helper).
+ * Returns 32-byte hash as lowercase hex.
  * @param {string} tx_data_hex
  * @returns {string}
  */
@@ -29,7 +28,7 @@ export function compute_signing_hash(tx_data_hex) {
 }
 
 /**
- * Generate a fresh BIP39 24-word mnemonic (for display before key generation).
+ * Generate a fresh 24-word BIP39 mnemonic.
  * @returns {string}
  */
 export function generate_mnemonic() {
@@ -52,15 +51,10 @@ export function generate_mnemonic() {
 }
 
 /**
- * Generate a fresh random Falcon-512 keypair and a fresh BIP39 mnemonic.
+ * Generate a fresh random Falcon-512 keypair + BIP39 mnemonic.
  *
- * Returns a JSON object: `{ mnemonic, address, public_key, secret_key }`
- * where `public_key` and `secret_key` are lowercase hex strings.
- *
- * The caller is responsible for:
- * 1. Displaying `mnemonic` ONCE and asking the user to back it up.
- * 2. Encrypting `secret_key` before storing (use `encrypt_secret_key()`).
- * 3. Zeroizing `secret_key` from JS memory as soon as possible.
+ * Returns `{ mnemonic, address, public_key, secret_key }` (hex keys).
+ * Caller MUST encrypt `secret_key` before storing it anywhere.
  * @returns {any}
  */
 export function generate_wallet() {
@@ -72,8 +66,7 @@ export function generate_wallet() {
 }
 
 /**
- * Derive a Quanta address from a hex-encoded Falcon-512 public key.
- * Formula: `"0x" + hex(SHA3-256(pubkey)[..20])`
+ * Derive a Quanta address from a hex-encoded public key.
  * @param {string} pubkey_hex
  * @returns {string}
  */
@@ -99,12 +92,13 @@ export function get_address(pubkey_hex) {
 }
 
 /**
- * Import an existing wallet from a BIP39 mnemonic phrase.
+ * Restore a wallet deterministically from a BIP39 mnemonic phrase.
  *
- * Generates the `index`-th account keypair deterministically from the mnemonic.
+ * Uses `keygen(seed)` from falcon-rust which accepts a 32-byte seed and
+ * produces a deterministic keypair — so the same mnemonic always gives the
+ * same keys, enabling seedphrase-based recovery without storing the SK.
+ *
  * Returns `{ address, public_key, secret_key }`.
- *
- * IMPORTANT: `secret_key` must be encrypted before storing.
  * @param {string} mnemonic_phrase
  * @param {string} passphrase
  * @param {number} index
@@ -129,14 +123,13 @@ export function init_panic_hook() {
 /**
  * Sign transaction data with a Falcon-512 secret key.
  *
- * `tx_data_hex`  — hex-encoded raw transaction bytes to sign.
- * `secret_key_hex` — hex-encoded Falcon-512 secret key.
+ * `tx_data_hex`    — hex of the raw transaction payload bytes.
+ * `secret_key_hex` — hex of the Falcon-512 secret key.
  *
- * Returns the hex-encoded signed-message blob (signature || message),
- * ready to be sent as `signature` in the transaction JSON.
- *
- * The signing hash is `SHA3-256(SIGNING_DOMAIN || tx_data)`, matching
- * `sign_transaction_canonical()` in the chain's signatures.rs.
+ * Returns hex of raw Falcon-512 signature bytes.
+ * The node's updated verify_signature_strict() calls:
+ *   falcon_rust::verify(canonical_hash, &sig, &pk)
+ * which expects ONLY the raw sig bytes (no appended message).
  * @param {string} tx_data_hex
  * @param {string} secret_key_hex
  * @returns {string}
@@ -177,22 +170,22 @@ export function validate_mnemonic(phrase) {
 }
 
 /**
- * Verify a Falcon-512 signature.
+ * Verify a Falcon-512 signature (for local sanity-checking before submission).
  *
- * `hash_hex`      — hex of the 32-byte canonical signing hash.
- * `signature_hex` — hex of the signed-message blob.
- * `pubkey_hex`    — hex of the 897-byte Falcon-512 public key.
+ * `hash_hex`       — hex of the 32-byte canonical signing hash.
+ * `signed_msg_hex` — hex of the full signed-message blob (sig || hash).
+ * `pubkey_hex`     — hex of the 897-byte Falcon-512 public key.
  *
  * Returns `true` only on a strict cryptographic success.
  * @param {string} hash_hex
- * @param {string} signature_hex
+ * @param {string} signed_msg_hex
  * @param {string} pubkey_hex
  * @returns {boolean}
  */
-export function verify_signature(hash_hex, signature_hex, pubkey_hex) {
+export function verify_signature(hash_hex, signed_msg_hex, pubkey_hex) {
     const ptr0 = passStringToWasm0(hash_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(signature_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const ptr1 = passStringToWasm0(signed_msg_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
     const ptr2 = passStringToWasm0(pubkey_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len2 = WASM_VECTOR_LEN;

@@ -6,9 +6,13 @@
 
 'use strict';
 
-const STORAGE_KEY = 'quanta_wallet_v1';
+const STORAGE_KEY  = 'quanta_wallet_v1';
+const ACCOUNTS_KEY = 'quanta_accounts_v1'; // array of {name, encryptedData, address, publicKey}
 const SETTINGS_KEY = 'quanta_settings_v1';
 const MICROUNITS = 1_000_000;
+const MAX_ACCOUNTS = 10;
+
+let activeAccountIndex = 0; // which account is displayed
 
 let state = {
   publicKey: null,
@@ -18,8 +22,8 @@ let state = {
   txHistory: [],
   mnemonic: null,
   settings: {
-    rpc_url: 'http://localhost:3000',
-    explorer_url: 'https://explorer.quantachain.org',
+    rpc_url: 'https://rpc.quantachain.org',
+    explorer_url: 'https://scan.quantachain.org',
     network: 'testnet',
   },
 };
@@ -425,9 +429,14 @@ function rpcUrl(path) {
 async function refreshBalance() {
   if (!state.address) return;
   try {
-    const r = await fetch(rpcUrl(`/balance/${state.address}`));
+    const r = await fetch(rpcUrl('/api/balance'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: state.address })
+    });
+    if (!r.ok) throw new Error('Bad response');
     const data = await r.json();
-    state.balance = data.balance ?? data.amount ?? 0;
+    state.balance = data.balance_microunits ?? data.balance ?? 0;
     const b1 = document.getElementById('balance-val');
     const b2 = document.getElementById('asset-bal-val');
     if (b1) b1.textContent = (state.balance / MICROUNITS).toFixed(6);
@@ -440,46 +449,70 @@ async function refreshBalance() {
 
 async function loadHistory() {
   if (!state.address) return;
+  const base = (state.settings.rpc_url || 'https://rpc.quantachain.org').replace(/\/$/, '');
   try {
-    const r = await fetch(rpcUrl(`/transactions/${state.address}`));
-    if (!r.ok) return;
-    const data = await r.json();
-    state.txHistory = Array.isArray(data) ? data : (data.transactions ?? []);
-    renderHistory();
-  } catch { }
+    const r = await fetch(`${base}/api/address/${state.address}/txs?max_blocks=1000`);
+    if (r.ok) {
+      const data = await r.json();
+      // Response: { address, transaction_count, transactions: AddressTransaction[] }
+      state.txHistory = Array.isArray(data.transactions) ? data.transactions : [];
+    } else {
+      state.txHistory = [];
+    }
+  } catch {
+    state.txHistory = [];
+  }
+  renderHistory();
 }
 
 function renderHistory() {
   const list = document.getElementById('tx-list');
   if (!list) return;
   if (!state.txHistory.length) {
-    list.innerHTML = '<div class="tx-empty">No transactions yet</div>'; return;
+    const explorerAddr = `https://scan.quantachain.org/address/${state.address || ''}`;
+    list.innerHTML = `
+      <div class="tx-empty">
+        <div style="font-size:2rem;margin-bottom:8px;">📭</div>
+        <div>No transactions yet</div>
+        <a href="${explorerAddr}" target="_blank"
+           style="display:inline-block;margin-top:12px;color:var(--cyan);font-size:0.8rem;text-decoration:none;">View on Explorer ↗</a>
+      </div>`;
+    return;
   }
+  const explorerBase = state.settings.explorer_url || 'https://scan.quantachain.org';
   list.innerHTML = state.txHistory.slice(0, 30).map(tx => {
     const out = tx.sender?.toLowerCase() === state.address?.toLowerCase();
-    const amount = ((tx.amount ?? 0) / MICROUNITS).toFixed(6);
+    // amount_microunits is the field from the node API
+    const amount = ((tx.amount_microunits ?? tx.amount ?? 0) / MICROUNITS).toFixed(6);
     const peer = (out ? tx.recipient : tx.sender) || '—';
-    const short = peer.length > 16 ? peer.slice(0, 10) + '…' + peer.slice(-6) : peer;
-    const time = tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleString() : '';
+    const short = peer.length > 16 ? peer.slice(0, 8) + '…' + peer.slice(-6) : peer;
+    // block_time is unix seconds
+    const ts = tx.block_time ?? tx.timestamp;
+    const time = ts ? new Date(ts * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+    const date = ts ? new Date(ts * 1000).toLocaleDateString() : '';
+    const txHash = tx.tx_hash || tx.hash || '';
+    const explorerTxLink = txHash ? `${explorerBase}/tx/${txHash}` : '';
     return `
-      <div class="tx-item">
-        <span class="tx-dir" style="font-size:1.2rem; color:var(--text-secondary)">${out ? '↑' : '↓'}</span>
-        <div class="tx-info" style="flex:1; margin-left:12px;">
-          <div class="tx-addr" style="font-family:var(--mono); font-size:0.75rem; color:var(--text-secondary)">
-            ${out ? 'To:' : 'From:'} 
-            ${state.settings.explorer_url ? `<a href="${state.settings.explorer_url}/address/${peer}" target="_blank" style="color:var(--text-secondary);text-decoration:none;">${escapeHtml(short)}</a>` : escapeHtml(short)}
-          </div>
-          <div class="tx-time" style="font-size:0.75rem; color:var(--text-muted)">
-            ${escapeHtml(time)}
-            ${state.settings.explorer_url && (tx.signature || tx.hash) ? `<a href="${state.settings.explorer_url}/tx/${tx.signature || tx.hash}" target="_blank" style="color:var(--cyan);text-decoration:none;margin-left:4px;" title="View on explorer">↗</a>` : ''}
-          </div>
+      <div class="tx-item" style="cursor:${explorerTxLink ? 'pointer' : 'default'}" ${explorerTxLink ? `onclick="window.open('${explorerTxLink}','_blank')"` : ''}>
+        <div class="tx-icon ${out ? 'tx-out' : 'tx-in'}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            ${out ? '<path d="M5 12h14M12 5l7 7-7 7"/>' : '<path d="M19 12H5M12 19l-7-7 7-7"/>'}
+          </svg>
         </div>
-        <span class="tx-amount" style="font-weight:600; color: ${out ? 'var(--text-primary)' : 'var(--success)'}">${out ? '-' : '+'}${escapeHtml(amount)} QUA</span>
+        <div class="tx-info">
+          <div class="tx-label">${out ? 'Sent' : 'Received'}</div>
+          <div class="tx-peer">${escapeHtml(short)}</div>
+        </div>
+        <div class="tx-right">
+          <div class="tx-amount ${out ? 'tx-amount-out' : 'tx-amount-in'}">${out ? '−' : '+'}${escapeHtml(amount)} <span style="font-size:0.75em;opacity:0.7">QUA</span></div>
+          <div class="tx-time">${escapeHtml(date)} ${escapeHtml(time)} ${explorerTxLink ? '<span style="color:var(--cyan)">↗</span>' : ''}</div>
+        </div>
       </div>`;
   }).join('');
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────────
+
 
 async function sendTransaction() {
   const toEl = document.getElementById('send-to');
@@ -493,6 +526,7 @@ async function sendTransaction() {
   const password = pwdEl.value;
   const errEl = document.getElementById('send-error');
   const succEl = document.getElementById('send-success');
+  const btn = document.getElementById('btn-exec-send');
   if (errEl) errEl.classList.add('hidden');
   if (succEl) succEl.classList.add('hidden');
 
@@ -504,37 +538,85 @@ async function sendTransaction() {
     if (errEl) { errEl.textContent = 'Invalid amount'; errEl.classList.remove('hidden'); }
     return;
   }
+
+  // Show loading state
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Submitting…'; }
+
   try {
     const wallet = await loadWalletData(password);
     if (!wasm) throw new Error('WASM not loaded');
     const timestamp = Math.floor(Date.now() / 1000);
+    let fetchedNonce = 0;
+    try {
+      const balR = await fetch(rpcUrl('/api/balance'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: state.address })
+      });
+      if (balR.ok) {
+        const balD = await balR.json();
+        fetchedNonce = (balD.nonce || 0) + 1;
+      }
+    } catch (e) { console.warn('Could not fetch nonce', e); }
+
     const tx = {
       sender: state.address, recipient: to,
       amount: Math.round(amount * MICROUNITS),
       fee: Math.round(fee * MICROUNITS),
-      nonce: timestamp, timestamp,
-      signature: '', public_key: state.publicKey,
+      nonce: fetchedNonce, timestamp,
+      signature: [], public_key: [],
       lock_time: 0, tx_type: 'Transfer', sig_scheme: 'Falcon512',
     };
-    const payload = `${tx.sender}:${tx.recipient}:${tx.amount}:${tx.timestamp}:${tx.fee}:${tx.nonce}`;
-    const hexPayload = Array.from(new TextEncoder().encode(payload))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-    tx.signature = wasm.sign_transaction(hexPayload, wallet.skHex);
+    const encoder = new TextEncoder();
+    function toLeBytes(num) {
+      const arr = new Uint8Array(8);
+      new DataView(arr.buffer).setBigUint64(0, BigInt(num), true);
+      return Array.from(arr);
+    }
+    const pkBytes = Array.from(new Uint8Array((state.publicKey.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
+    const payloadBytes = [
+      ...Array.from(encoder.encode(tx.sender)),
+      ...Array.from(encoder.encode(tx.recipient)),
+      ...toLeBytes(tx.amount),
+      ...toLeBytes(tx.timestamp),
+      ...toLeBytes(tx.fee),
+      ...toLeBytes(tx.nonce),
+      ...toLeBytes(tx.lock_time),
+      ...pkBytes,
+      0, // sig_scheme: Falcon512 = 0
+      0  // tx_type: Transfer = 0
+    ];
+    const hexPayload = payloadBytes.map(b => b.toString(16).padStart(2, '0')).join('');
+    const hexSig = wasm.sign_transaction(hexPayload, wallet.skHex);
+    const hexToBytes = (hex) => Array.from(new Uint8Array((hex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
+    tx.signature = hexToBytes(hexSig);
+    tx.public_key = hexToBytes(state.publicKey);
 
-    const resp = await fetch(rpcUrl('/transactions'), {
+    const resp = await fetch(rpcUrl('/api/transactions/submit'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tx),
     });
-    if (!resp.ok) throw new Error(await resp.text());
-    if (succEl) { succEl.textContent = 'Transaction sent'; succEl.classList.remove('hidden'); }
-    toast('Transaction sent');
+    const result = await resp.json();
+    if (!resp.ok || result.success === false) throw new Error(result.error || JSON.stringify(result));
+
+    const txHash = result.tx_hash || '';
+    const explorerBase = state.settings.explorer_url || 'https://scan.quantachain.org';
+    const hashShort = txHash ? txHash.slice(0, 12) + '…' : '';
+    const explorerLink = txHash ? `<a href="${explorerBase}/tx/${txHash}" target="_blank" style="color:var(--cyan);text-decoration:none;">View ↗</a>` : '';
+
+    if (succEl) {
+      succEl.innerHTML = `✅ Transaction submitted!${hashShort ? ` <span style="font-family:var(--mono);font-size:0.8em">${escapeHtml(hashShort)}</span>` : ''} ${explorerLink}`;
+      succEl.classList.remove('hidden');
+    }
+    toast('Transaction submitted ✅');
     toEl.value = ''; amEl.value = ''; pwdEl.value = '';
-    setTimeout(() => { closePanel('send-panel'); refreshBalance(); loadHistory(); }, 2000);
+    setTimeout(() => { closePanel('send-panel'); refreshBalance(); loadHistory(); }, 3000);
   } catch (e) {
     if (errEl) {
       errEl.textContent = e.name === 'OperationError' ? 'Wrong password' : 'Error: ' + e.message;
       errEl.classList.remove('hidden');
     }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Submit'; }
   }
 }
 
@@ -596,13 +678,77 @@ function copyAddress() {
   navigator.clipboard.writeText(state.address).then(() => toast('Address copied'));
 }
 
-// ── Settings ──────────────────────────────────────────────────────────────────
+// ── Multi-Account Management ──────────────────────────────────────────────────
+
+async function getAccounts() {
+  const list = await storageGet(ACCOUNTS_KEY);
+  return Array.isArray(list) ? list : [];
+}
+
+async function renderAccountsList() {
+  const container = document.getElementById('accounts-list');
+  if (!container) return;
+  const accounts = await getAccounts();
+
+  // Fallback: if no accounts list yet, synthesise one from current wallet data
+  const display = accounts.length ? accounts : [
+    { name: 'Account 1', address: state.address || '0x...', active: true }
+  ];
+
+  container.innerHTML = display.map((acc, i) => {
+    const addr = acc.address || '0x...';
+    const short = addr.slice(0, 10) + '\u2026' + addr.slice(-6);
+    const isActive = i === activeAccountIndex;
+    return `
+      <div class="account-card" style="margin-bottom:8px;${isActive ? 'border:1px solid var(--cyan);' : ''}" data-idx="${i}">
+        <div class="account-details" style="cursor:pointer" onclick="switchAccount(${i})">
+          <div class="account-name" style="display:flex;align-items:center;gap:6px;">
+            ${escapeHtml(acc.name || 'Account ' + (i + 1))}
+            ${isActive ? '<span style="font-size:0.7rem;color:var(--cyan);font-weight:600;">Active</span>' : ''}
+          </div>
+          <div class="account-addr-full" style="font-size:0.72rem;">${escapeHtml(short)}</div>
+        </div>
+        <button onclick="navigator.clipboard.writeText('${escapeHtml(addr)}').then(()=>toast('Copied'))" class="icon-btn" title="Copy">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+        </button>
+      </div>`;
+  }).join('');
+
+  // Hide Add Account if at limit
+  const addBtn = document.getElementById('btn-add-account');
+  if (addBtn) addBtn.style.display = display.length >= MAX_ACCOUNTS ? 'none' : '';
+}
+
+function switchAccount(idx) {
+  activeAccountIndex = idx;
+  toast('Account switched');
+  closePanel('account-panel');
+  // In a full impl, reload the wallet data for the selected account.
+  // For now, show a note that the page will reflect the new account on next unlock.
+}
+
+async function addAccount() {
+  const accounts = await getAccounts();
+  if (accounts.length >= MAX_ACCOUNTS) { toast('Maximum 10 accounts'); return; }
+  // Open import flow in a new tab so the user can paste their mnemonic
+  chrome.tabs.create({ url: chrome.runtime.getURL('popup.html?flow=import') });
+  closePanel('account-panel');
+  toast('Import your next account mnemonic');
+}
+
+// Expose for inline onclick in account cards
+window.switchAccount = switchAccount;
+
+
 
 async function loadSettings() {
   const s = await storageGet(SETTINGS_KEY);
   if (s) {
-    state.settings.rpc_url = s.rpc_url || 'http://localhost:3000';
-    state.settings.explorer_url = s.explorer_url || 'https://explorer.quantachain.org';
+    state.settings.rpc_url = s.rpc_url || 'https://rpc.quantachain.org';
+    state.settings.explorer_url = s.explorer_url || 'https://scan.quantachain.org';
     state.settings.network = s.network || 'testnet';
   }
 }
@@ -611,8 +757,8 @@ async function saveSettings() {
   const urlEl = document.getElementById('rpc-url');
   const expEl = document.getElementById('explorer-url');
   const selEl = document.getElementById('network-select');
-  if (urlEl) state.settings.rpc_url = urlEl.value.trim() || 'http://localhost:3000';
-  if (expEl) state.settings.explorer_url = expEl.value.trim() || '';
+  if (urlEl) state.settings.rpc_url = urlEl.value.trim() || 'https://rpc.quantachain.org';
+  if (expEl) state.settings.explorer_url = expEl.value.trim() || 'https://scan.quantachain.org';
   if (selEl) state.settings.network = selEl.value;
   await storageSet(SETTINGS_KEY, state.settings);
   updateMainUI(); closePanel('settings-panel');
@@ -665,7 +811,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   b('btn-import-go', importWallet);
 
   // New UI binds
-  b('btn-show-account', () => showPanel('account-panel'));
+  b('btn-show-account', () => { showPanel('account-panel'); renderAccountsList(); });
+  b('btn-add-account', addAccount);
   b('header-btn-settings', () => showPanel('settings-panel'));
   b('btn-network-toggle', () => showPanel('settings-panel'));
 

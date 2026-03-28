@@ -253,8 +253,54 @@ input[type="number"] {
 .tab-content.active { display: block; animation: fadeIn 0.15s ease-out; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
-.tx-list { display: flex; flex-direction: column; gap: 8px; }
-.tx-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-1); border-radius: var(--radius-md); }
+/* ==========================================================================
+   Activity item layout (new)
+   ========================================================================== */
+:root {
+  --cyan: #00d4aa;
+}
+
+.tx-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; background: var(--bg-1); border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+.tx-item:hover { background: var(--bg-2); }
+
+.tx-icon {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.tx-out { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
+.tx-in  { background: rgba(0,212,170,0.12);  color: var(--cyan); }
+
+.tx-info { flex: 1; overflow: hidden; }
+.tx-label { font-weight: 600; font-size: 0.88rem; color: var(--text-primary); }
+.tx-peer  { font-family: var(--mono); font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tx-right { text-align: right; flex-shrink: 0; }
+.tx-amount { font-family: var(--mono); font-size: 0.88rem; font-weight: 600; }
+.tx-amount-in  { color: var(--cyan); }
+.tx-amount-out { color: var(--text-primary); }
+.tx-time { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+.tx-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 0.9rem; }
+
+/* ==========================================================================
+   Button spinner (loading state on Submit button)
+   ========================================================================== */
+
+.btn-spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(0,0,0,0.4); border-top-color: #000;
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+/* Success message with links */
+.success-msg a { color: var(--cyan); text-decoration: none; }
+.success-msg a:hover { text-decoration: underline; }
+
 .asset-row { display: flex; align-items: center; gap: 14px; padding: 16px; background: var(--bg-1); border-radius: var(--radius-md); }
 .asset-logo { width: 36px; height: 36px; border-radius: 50%; background: var(--bg-0); border: 1px solid var(--border); overflow: hidden; padding: 4px; display: flex; align-items: center; justify-content: center; }
 .asset-info { display: flex; flex-direction: column; flex: 1; }

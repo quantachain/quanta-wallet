@@ -3,6 +3,11 @@
   "type": "module",
   "description": "WASM bindings for QuantaChain PQC wallet operations",
   "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quantachain/quanta-wasm"
+  },
   "files": [
     "quanta_wasm_bg.wasm",
     "quanta_wasm.js",
