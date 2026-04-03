@@ -533,45 +533,94 @@ async function sendTransaction() {
       throw new Error(wasm ? 'No secret key in stored wallet' : 'WASM not loaded — cannot sign');
     }
 
-    const timestamp = Math.floor(Date.now() / 1000);
-    const nonce = timestamp; // simplistic; real impl uses per-address nonce
+    // ── Fetch real nonce from node (/api/address/:address returns {nonce, balance_microunits, ...})
+    let nonce = 1;
+    try {
+      const nonceResp = await fetch(rpcUrl(`/api/address/${state.address}`));
+      if (nonceResp.ok) {
+        const nonceData = await nonceResp.json();
+        nonce = (nonceData.nonce ?? 0) + 1;
+      }
+    } catch (e) {
+      console.warn('[Quanta] Could not fetch nonce, defaulting to 1:', e);
+    }
 
-    // Build tx payload matching chain's Transaction struct (JSON-serialised)
+    const timestamp = Math.floor(Date.now() / 1000);
+    const amountMu  = Math.round(amount * MICROUNITS);
+    const feeMu     = Math.round(fee * MICROUNITS);
+    const lockTime  = 0;
+    // sig_scheme=0 (Falcon512), tx_type=0 (Transfer) — must match node's get_signing_bytes() discriminants
+
+    // ── Decode public key hex → bytes (needed for signing payload)
+    const pkBytes = hexToBytes(state.publicKey || '');
+
+    // ── Build binary signing payload matching node's Transaction::get_signing_bytes()
+    // Layout (all integers little-endian):
+    //   sender_utf8 | recipient_utf8 | amount_u64le | timestamp_i64le |
+    //   fee_u64le | nonce_u64le | lock_time_u64le | public_key_bytes |
+    //   sig_scheme_u8 (0) | tx_type_u8 (0)
+    const enc = new TextEncoder();
+    const senderBytes = enc.encode(state.address);
+    const recipBytes  = enc.encode(to);
+
+    const signingBuf = new Uint8Array(
+      senderBytes.length +
+      recipBytes.length +
+      8 + 8 + 8 + 8 + 8 +   // amount, timestamp, fee, nonce, lock_time
+      pkBytes.length +
+      1 + 4 + 1               // sig_scheme, network_id, tx_type
+    );
+    let off = 0;
+    signingBuf.set(senderBytes, off); off += senderBytes.length;
+    signingBuf.set(recipBytes,  off); off += recipBytes.length;
+    writeU64LE(signingBuf, amountMu,  off); off += 8;
+    writeI64LE(signingBuf, timestamp, off); off += 8;
+    writeU64LE(signingBuf, feeMu,     off); off += 8;
+    writeU64LE(signingBuf, nonce,     off); off += 8;
+    writeU64LE(signingBuf, lockTime,  off); off += 8;
+    signingBuf.set(pkBytes, off); off += pkBytes.length;
+    signingBuf[off++] = 0;  // sig_scheme = Falcon512
+    const networkId = state.settings.network === 'mainnet' ? 1 : 0;
+    signingBuf[off++] = networkId & 0xff;
+    signingBuf[off++] = (networkId >> 8) & 0xff;
+    signingBuf[off++] = (networkId >> 16) & 0xff;
+    signingBuf[off++] = (networkId >> 24) & 0xff;
+    signingBuf[off++] = 0;  // tx_type    = Transfer
+
+    const signingHex     = toHex(signingBuf);
+    const signatureHex   = wasm.sign_transaction(signingHex, skHex);
+
+    // ── Build TX payload for submission (signature and public_key as hex strings)
     const tx = {
-      sender: state.address,
-      recipient: to,
-      amount: Math.round(amount * MICROUNITS),
-      fee: Math.round(fee * MICROUNITS),
+      sender:     state.address,
+      recipient:  to,
+      amount:     amountMu,
+      fee:        feeMu,
       nonce,
       timestamp,
-      signature: '',
+      signature:  signatureHex,
       public_key: state.publicKey,
-      lock_time: 0,
-      tx_type: 'Transfer',
+      lock_time:  lockTime,
+      tx_type:    'Transfer',
       sig_scheme: 'Falcon512',
+      network_id: networkId,
     };
 
-    // Signing payload: serialize canonical fields
-    const signingPayload = buildSigningPayload(tx);
-    const signingHex = toHex(new TextEncoder().encode(signingPayload));
-
-    // Sign with Falcon-512 via WASM
-    const signatureHex = wasm.sign_transaction(signingHex, skHex);
-    tx.signature = signatureHex;
-
-    // Broadcast
-    const resp = await fetch(rpcUrl('/transactions'), {
+    // ── Broadcast to /api/transactions/submit
+    const resp = await fetch(rpcUrl('/api/transactions/submit'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tx),
     });
 
-    if (!resp.ok) {
-      const body = await resp.text();
-      throw new Error(`Node rejected transaction: ${body}`);
+    const respData = await resp.json().catch(() => ({}));
+
+    if (!resp.ok || !respData.success) {
+      throw new Error(respData.error || `Node rejected: HTTP ${resp.status}`);
     }
 
-    successEl.textContent = '✅ Transaction broadcast successfully!';
+    const txHash = respData.tx_hash || '';
+    successEl.innerHTML = `✅ Transaction submitted!${txHash ? `<br><small style="font-family:monospace;word-break:break-all">${escapeHtml(txHash)}</small>` : ''}`;
     successEl.classList.remove('hidden');
     toast('✅ Transaction sent!');
 
@@ -580,7 +629,7 @@ async function sendTransaction() {
     document.getElementById('send-amount').value = '';
     document.getElementById('send-password').value = '';
 
-    setTimeout(() => { closePanel('send-panel'); refreshBalance(); loadHistory(); }, 2000);
+    setTimeout(() => { closePanel('send-panel'); refreshBalance(); loadHistory(); }, 2500);
   } catch (e) {
     if (e.name === 'OperationError') {
       errEl.textContent = '❌ Wrong password';
@@ -591,14 +640,41 @@ async function sendTransaction() {
   }
 }
 
-/** Build the canonical signing payload string to match the chain's get_signing_bytes() */
-function buildSigningPayload(tx) {
-  return `${tx.sender}:${tx.recipient}:${tx.amount}:${tx.timestamp}:${tx.fee}:${tx.nonce}`;
+// ── Signing payload helpers ──────────────────────────────────────────────────
+
+/** Write a u64 as 8 little-endian bytes into buf at offset */
+function writeU64LE(buf, value, offset) {
+  // JavaScript numbers are IEEE754 doubles (53-bit mantissa), safe for amounts in microunits
+  let lo = value >>> 0;
+  let hi = Math.floor(value / 0x100000000) >>> 0;
+  buf[offset]   =  lo        & 0xff;
+  buf[offset+1] = (lo >>> 8) & 0xff;
+  buf[offset+2] = (lo >>> 16)& 0xff;
+  buf[offset+3] = (lo >>> 24)& 0xff;
+  buf[offset+4] =  hi        & 0xff;
+  buf[offset+5] = (hi >>> 8) & 0xff;
+  buf[offset+6] = (hi >>> 16)& 0xff;
+  buf[offset+7] = (hi >>> 24)& 0xff;
+}
+
+/** Write an i64 as 8 little-endian bytes (timestamps fit in 53-bit safe range) */
+function writeI64LE(buf, value, offset) {
+  writeU64LE(buf, value >= 0 ? value : value + 0x10000000000000000, offset);
+}
+
+/** Decode a hex string to Uint8Array */
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
 function toHex(bytes) {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
 
 // ============================================================================
 // QR CODE (via qr-code-styling or simple SVG fallback)

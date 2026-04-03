@@ -34,7 +34,7 @@
       <p class="hero-sub">Post-Quantum · Falcon-512 · NIST PQC</p>
       <div class="welcome-actions">
         <button id="btn-create" class="btn btn-primary btn-lg">Create New Wallet</button>
-        <button id="btn-import" class="btn btn-ghost btn-lg">Import from Mnemonic</button>
+        <button id="btn-import" class="btn btn-ghost btn-lg">Import Wallet</button>
       </div>
       <p class="welcome-note">Your keys never leave this device.</p>
     </div>
@@ -113,18 +113,47 @@
     <div class="card-page">
       <button class="back-btn" data-target="screen-welcome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> Back</button>
       <h2>Import Wallet</h2>
-      <div class="form-group">
-        <label>Recovery Phrase (24 words)</label>
-        <textarea id="import-phrase" rows="3" placeholder="word1 word2 ... word24"></textarea>
-        <span id="import-valid" class="valid-label hidden">Valid format</span>
-        <span id="import-invalid" class="invalid-label hidden">Invalid format</span>
+
+      <!-- Mode tabs -->
+      <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <button id="import-tab-mnemonic" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Mnemonic</button>
+        <button id="import-tab-privkey" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;">Private Key</button>
       </div>
-      <div class="form-group">
-        <label>Wallet Password</label>
-        <input id="import-password" type="password" placeholder="Choose a password">
+
+      <!-- Mnemonic section -->
+      <div id="import-section-mnemonic">
+        <div class="form-group">
+          <label>Recovery Phrase (24 words)</label>
+          <textarea id="import-phrase" rows="3" placeholder="word1 word2 ... word24"></textarea>
+          <span id="import-valid" class="valid-label hidden">Valid format</span>
+          <span id="import-invalid" class="invalid-label hidden">Invalid format</span>
+        </div>
+        <div class="form-group">
+          <label>Wallet Password</label>
+          <input id="import-password" type="password" placeholder="Choose a password">
+        </div>
+        <div id="import-error" class="error-msg hidden"></div>
+        <button id="btn-import-go" class="btn btn-primary" disabled>Import Wallet <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
       </div>
-      <div id="import-error" class="error-msg hidden"></div>
-      <button id="btn-import-go" class="btn btn-primary" disabled>Import Wallet <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+
+      <!-- Private Key section -->
+      <div id="import-section-privkey" style="display:none;">
+        <p class="subtitle" style="font-size:0.8rem;margin-bottom:12px;">Paste the <strong>secret_key_hex</strong> and <strong>public_key_hex</strong> from your <code>faucet_accounts_export.json</code>.</p>
+        <div class="form-group">
+          <label>Private Key (hex)</label>
+          <textarea id="import-sk-hex" rows="3" placeholder="Falcon-512 secret key hex…" style="font-family:var(--mono);font-size:0.72rem;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Public Key (hex)</label>
+          <textarea id="import-pk-hex" rows="3" placeholder="Falcon-512 public key hex…" style="font-family:var(--mono);font-size:0.72rem;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Wallet Password</label>
+          <input id="import-pk-password" type="password" placeholder="Choose a password">
+        </div>
+        <div id="import-pk-error" class="error-msg hidden"></div>
+        <button id="btn-import-pk-go" class="btn btn-primary">Import from Private Key <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+      </div>
     </div>
   </div>
 
@@ -367,13 +396,39 @@
       <h3>Import Account</h3><button class="close-panel" data-panel="add-account-panel">✕</button>
     </div>
     <div class="panel-body">
-      <p class="subtitle" style="margin-bottom:16px;font-size:0.85rem;color:var(--text-secondary);">Enter the 24-word recovery phrase for the account you want to add. Your existing wallet and password are not affected.</p>
-      <div class="form-group">
-        <label>Recovery Phrase (24 words)</label>
-        <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24" style="font-family:var(--mono);font-size:0.82rem;"></textarea>
+
+      <!-- Mode tabs -->
+      <div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <button id="add-tab-mnemonic" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.78rem;padding:6px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Mnemonic</button>
+        <button id="add-tab-privkey" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.78rem;padding:6px 4px;">Private Key</button>
       </div>
-      <div id="add-account-error" class="error-msg hidden"></div>
-      <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import Account</button>
+
+      <!-- Mnemonic section -->
+      <div id="add-section-mnemonic">
+        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Enter the 24-word recovery phrase for the account to add.</p>
+        <div class="form-group">
+          <label>Recovery Phrase (24 words)</label>
+          <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24" style="font-family:var(--mono);font-size:0.82rem;"></textarea>
+        </div>
+        <div id="add-account-error" class="error-msg hidden"></div>
+        <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import Account</button>
+      </div>
+
+      <!-- Private Key section -->
+      <div id="add-section-privkey" style="display:none;">
+        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Paste the keys from <code>faucet_accounts_export.json</code>.</p>
+        <div class="form-group">
+          <label>Private Key (hex)</label>
+          <textarea id="add-account-sk-hex" rows="3" placeholder="secret_key_hex…" style="font-family:var(--mono);font-size:0.7rem;"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Public Key (hex)</label>
+          <textarea id="add-account-pk-hex" rows="2" placeholder="public_key_hex…" style="font-family:var(--mono);font-size:0.7rem;"></textarea>
+        </div>
+        <div id="add-account-pk-error" class="error-msg hidden"></div>
+        <button id="btn-add-account-pk-go" class="btn btn-primary full-width" style="margin-top:8px;">Import from Private Key</button>
+      </div>
+
     </div>
   </div>
 

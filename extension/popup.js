@@ -451,6 +451,11 @@ function updateMainUI() {
   const menuAddr = document.getElementById('menu-wallet-address');
   if (menuAddr) menuAddr.textContent = a;
 
+  const accountLabel = document.querySelector('.account-label');
+  if (accountLabel) {
+    accountLabel.textContent = `Account ${(typeof activeAccountIndex !== 'undefined' ? activeAccountIndex : 0) + 1}`;
+  }
+
   const balEl = document.getElementById('asset-bal-val');
   if (balEl) balEl.textContent = (state.balance / MICROUNITS).toFixed(6);
 
@@ -611,7 +616,22 @@ async function sendTransaction() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Submitting…'; }
 
   try {
-    const wallet = await loadWalletData(password);
+    let walletSkHex;
+    if (typeof activeAccountIndex === 'undefined' || activeAccountIndex === 0) {
+      const wallet = await loadWalletData(password);
+      walletSkHex = wallet.skHex;
+    } else {
+      const accounts = await getAccounts();
+      const acc = accounts[activeAccountIndex - 1];
+      if (!acc) throw new Error('Account not found');
+      const salt  = new Uint8Array(acc.salt);
+      const iv    = new Uint8Array(acc.iv);
+      const data  = new Uint8Array(acc.data);
+      const key   = await deriveKey(password, salt);
+      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+      const w = JSON.parse(new TextDecoder().decode(plain));
+      walletSkHex = w.skHex;
+    }
     if (!wasm) throw new Error('WASM not loaded');
     const timestamp = Math.floor(Date.now() / 1000);
 
@@ -627,17 +647,26 @@ async function sendTransaction() {
       if (balR.ok) {
         const balD = await balR.json();
         fetchedNonce = (typeof balD.nonce === 'number' ? balD.nonce : 0) + 1;
-        console.log(`[Quanta] nonce from node: ${balD.nonce} → submitting nonce: ${fetchedNonce}`);
+        console.log(`[Quanta] nonce from node: ${balD.nonce} → base next nonce: ${fetchedNonce}`);
       }
     } catch (e) { console.warn('Could not fetch nonce', e); }
+
+    const maxPendingNonce = Math.max(0, ...state.txHistory
+      .filter(t => t.pending && t.sender?.toLowerCase() === state.address?.toLowerCase())
+      .map(t => typeof t.nonce === 'number' ? t.nonce : 0)
+    );
+    if (maxPendingNonce >= fetchedNonce) {
+      fetchedNonce = maxPendingNonce + 1;
+      console.log(`[Quanta] overriding nonce from pending txs → submitting nonce: ${fetchedNonce}`);
+    }
 
     const tx = {
       sender: state.address, recipient: to,
       amount: Math.round(amount * MICROUNITS),
       fee: Math.round(fee * MICROUNITS),
       nonce: fetchedNonce, timestamp,
-      signature: [], public_key: [],
       lock_time: 0, tx_type: 'Transfer', sig_scheme: 'Falcon512',
+      network_id: state.settings.network === 'mainnet' ? 1 : 0,
     };
     const encoder = new TextEncoder();
     function toLeBytes(num) {
@@ -656,10 +685,11 @@ async function sendTransaction() {
       ...toLeBytes(tx.lock_time),
       ...pkBytes,
       0, // sig_scheme: Falcon512 = 0
+      tx.network_id & 0xff, (tx.network_id >> 8) & 0xff, (tx.network_id >> 16) & 0xff, (tx.network_id >> 24) & 0xff, // network_id (u32 LE)
       0  // tx_type: Transfer = 0
     ];
     const hexPayload = payloadBytes.map(b => b.toString(16).padStart(2, '0')).join('');
-    const hexSig = wasm.sign_transaction(hexPayload, wallet.skHex);
+    const hexSig = wasm.sign_transaction(hexPayload, walletSkHex);
     const hexToBytes = (hex) => Array.from(new Uint8Array((hex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
     tx.signature = hexToBytes(hexSig);
     tx.public_key = hexToBytes(state.publicKey);
@@ -700,6 +730,7 @@ async function sendTransaction() {
       recipient: to,
       amount_microunits: Math.round(amount * MICROUNITS),
       fee_microunits: Math.round(fee * MICROUNITS),
+      nonce: fetchedNonce,
       block_time: Math.floor(Date.now() / 1000),
       pending: true,
     };
@@ -753,7 +784,15 @@ async function revealPrivateKey() {
     document.getElementById('export-pw-group').classList.add('hidden');
     const resultBox = document.getElementById('export-key-result');
     resultBox.classList.remove('hidden');
-    document.getElementById('export-key-text').textContent = wallet.skHex;
+    // Export combined sk|pk so the import panel can work with just this one blob
+    const combined = wallet.skHex + '|' + wallet.pkHex;
+    document.getElementById('export-key-text').textContent = combined;
+    // Add a note to tell the user what this is
+    const noteEl = document.getElementById('export-key-note');
+    if (noteEl) {
+      noteEl.textContent = 'Copy this combined key (sk|pk). Paste it in "Import from Private Key" to restore your wallet on any device.';
+      noteEl.classList.remove('hidden');
+    }
   } catch (e) {
     errEl.textContent = 'Incorrect Password';
     errEl.classList.remove('hidden');
@@ -961,6 +1000,170 @@ window.switchAccount = switchAccount;
 
 
 
+// ── Import from Private Key (full wallet) ────────────────────────────────────
+
+async function importWalletPrivateKey() {
+  const skEl  = document.getElementById('import-sk-hex');
+  const pwdEl = document.getElementById('import-pk-password');
+  const errEl = document.getElementById('import-pk-error');
+  const btn   = document.getElementById('btn-import-pk-go');
+  if (!skEl || !pwdEl) return;
+
+  // Accept "sk_hex|pk_hex" combined format (exported by the wallet's Export Key panel)
+  const raw      = skEl.value.trim().replace(/\s+/g, '');
+  const password = pwdEl.value;
+
+  if (errEl) errEl.classList.add('hidden');
+
+  if (!raw || raw.length < 200) {
+    if (errEl) { errEl.textContent = 'Paste your exported combined key (from the Export Key panel)'; errEl.classList.remove('hidden'); } return;
+  }
+  if (password.length < 8) {
+    if (errEl) { errEl.textContent = 'Password must be at least 8 characters'; errEl.classList.remove('hidden'); } return;
+  }
+  if (!wasm) { if (errEl) { errEl.textContent = 'WASM not loaded'; errEl.classList.remove('hidden'); } return; }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Importing\u2026'; }
+  showScreen('screen-loading');
+  const msgEl = document.getElementById('loading-msg');
+  if (msgEl) msgEl.textContent = 'Importing wallet from private key\u2026';
+
+  try {
+    let skHex, pkHex, address;
+
+    if (raw.includes('|')) {
+      // Combined sk|pk format (exported by the wallet extension)
+      const pipe = raw.indexOf('|');
+      skHex = raw.slice(0, pipe);
+      pkHex = raw.slice(pipe + 1);
+      if (!pkHex || pkHex.length < 200) {
+        throw new Error('Combined key is malformed \u2014 missing public key after the | separator');
+      }
+      address = wasm.get_address(pkHex);
+    } else {
+      // Plain SK hex — try WASM derivation
+      pkHex = wasm.derive_pubkey_from_sk(raw); // will error with helpful message if not supported
+      skHex = raw;
+      address = wasm.get_address(pkHex);
+    }
+
+    await saveWallet(skHex, pkHex, address, null, password);
+    await enterMain();
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Error: ' + e.message; errEl.classList.remove('hidden'); }
+    showScreen('screen-import');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Import from Private Key'; }
+  }
+}
+
+
+// ── Add Account from Private Key ──────────────────────────────────────────────
+
+async function doAddAccountPrivateKey() {
+  const skEl  = document.getElementById('add-account-sk-hex');
+  const errEl = document.getElementById('add-account-pk-error');
+  const btn   = document.getElementById('btn-add-account-pk-go');
+  if (!skEl) return;
+
+  const raw = skEl.value.trim().replace(/\s+/g, '');
+  if (errEl) errEl.classList.add('hidden');
+
+  if (!raw || raw.length < 200) {
+    if (errEl) { errEl.textContent = 'Paste your exported combined key (from the Export Key panel)'; errEl.classList.remove('hidden'); } return;
+  }
+  if (!wasm) { if (errEl) { errEl.textContent = 'WASM not loaded'; errEl.classList.remove('hidden'); } return; }
+  if (!state.sessionPassword) {
+    if (errEl) { errEl.textContent = 'Session expired. Lock and unlock your wallet first.'; errEl.classList.remove('hidden'); } return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Importing\u2026'; }
+
+  try {
+    let skHex, pkHex, address;
+
+    if (raw.includes('|')) {
+      // Combined sk|pk format (exported by the wallet extension)
+      const pipe = raw.indexOf('|');
+      skHex = raw.slice(0, pipe);
+      pkHex = raw.slice(pipe + 1);
+      if (!pkHex || pkHex.length < 200) throw new Error('Combined key malformed \u2014 missing public key after |');
+      address = wasm.get_address(pkHex);
+    } else {
+      // Plain SK — attempt WASM derivation (will give helpful error if unsupported)
+      pkHex = wasm.derive_pubkey_from_sk(raw);
+      skHex = raw;
+      address = wasm.get_address(pkHex);
+    }
+
+    // Duplicate check
+    const accounts = await getAccounts();
+    const allAddresses = [state.address, ...accounts.map(a => a.address)].map(a => a?.toLowerCase());
+    if (allAddresses.includes(address?.toLowerCase())) {
+      if (errEl) { errEl.textContent = 'This account is already in your wallet.'; errEl.classList.remove('hidden'); }
+      if (btn) { btn.disabled = false; btn.textContent = 'Import from Private Key'; }
+      return;
+    }
+
+    const name = 'Account ' + (accounts.length + 2);
+    await saveAccountToList(skHex, pkHex, address, name);
+
+    skEl.value = '';
+    toast('\u2705 Account added: ' + name);
+    closePanel('add-account-panel');
+
+    showPanel('account-panel');
+    renderAccountsList();
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Error: ' + e.message; errEl.classList.remove('hidden'); }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Import from Private Key'; }
+  }
+}
+
+// ── Import mode tab toggle helpers ────────────────────────────────────────────
+
+function switchImportTab(mode) {
+  const mnemonicSection = document.getElementById('import-section-mnemonic');
+  const privkeySection  = document.getElementById('import-section-privkey');
+  const mnemonicTab     = document.getElementById('import-tab-mnemonic');
+  const privkeyTab      = document.getElementById('import-tab-privkey');
+  const activeStyle = { background: 'var(--cyan)', color: '#0b0e14', fontWeight: '700' };
+  const inactiveStyle = { background: '', color: '', fontWeight: '' };
+  if (mode === 'mnemonic') {
+    if (mnemonicSection) mnemonicSection.style.display = '';
+    if (privkeySection)  privkeySection.style.display  = 'none';
+    if (mnemonicTab) Object.assign(mnemonicTab.style, activeStyle);
+    if (privkeyTab)  Object.assign(privkeyTab.style,  inactiveStyle);
+  } else {
+    if (mnemonicSection) mnemonicSection.style.display = 'none';
+    if (privkeySection)  privkeySection.style.display  = '';
+    if (mnemonicTab) Object.assign(mnemonicTab.style, inactiveStyle);
+    if (privkeyTab)  Object.assign(privkeyTab.style,  activeStyle);
+  }
+}
+
+function switchAddAccountTab(mode) {
+  const mnemonicSection = document.getElementById('add-section-mnemonic');
+  const privkeySection  = document.getElementById('add-section-privkey');
+  const mnemonicTab     = document.getElementById('add-tab-mnemonic');
+  const privkeyTab      = document.getElementById('add-tab-privkey');
+  const activeStyle = { background: 'var(--cyan)', color: '#0b0e14', fontWeight: '700' };
+  const inactiveStyle = { background: '', color: '', fontWeight: '' };
+  if (mode === 'mnemonic') {
+    if (mnemonicSection) mnemonicSection.style.display = '';
+    if (privkeySection)  privkeySection.style.display  = 'none';
+    if (mnemonicTab) Object.assign(mnemonicTab.style, activeStyle);
+    if (privkeyTab)  Object.assign(privkeyTab.style,  inactiveStyle);
+  } else {
+    if (mnemonicSection) mnemonicSection.style.display = 'none';
+    if (privkeySection)  privkeySection.style.display  = '';
+    if (mnemonicTab) Object.assign(mnemonicTab.style, inactiveStyle);
+    if (privkeyTab)  Object.assign(privkeyTab.style,  activeStyle);
+  }
+}
+
+
 async function loadSettings() {
   const s = await storageGet(SETTINGS_KEY);
   if (s) {
@@ -1027,10 +1230,19 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (impPhr) impPhr.addEventListener('input', validateImportPhrase);
   b('btn-import-go', importWallet);
 
+  // Import screen — mode tabs
+  b('import-tab-mnemonic', () => switchImportTab('mnemonic'));
+  b('import-tab-privkey',  () => switchImportTab('privkey'));
+  b('btn-import-pk-go', importWalletPrivateKey);
+
   // New UI binds
   b('btn-show-account', () => { showPanel('account-panel'); renderAccountsList(); });
   b('btn-add-account', addAccount);
   b('btn-add-account-go', doAddAccount);
+  // Add Account panel — mode tabs
+  b('add-tab-mnemonic', () => switchAddAccountTab('mnemonic'));
+  b('add-tab-privkey',  () => switchAddAccountTab('privkey'));
+  b('btn-add-account-pk-go', doAddAccountPrivateKey);
   b('header-btn-settings', () => showPanel('settings-panel'));
   b('btn-network-toggle', () => showPanel('settings-panel'));
 
