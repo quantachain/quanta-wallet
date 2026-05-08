@@ -8,12 +8,42 @@
 export function compute_signing_hash(tx_data_hex: string): string;
 
 /**
+ * Derive the Falcon-512 public key from a hex-encoded secret key.
+ *
+ * NOTE: falcon-rust does not expose a method to extract the public key from
+ * a standalone secret key (keys must be generated together via keygen).
+ * This function therefore expects a COMBINED key blob in the format:
+ *
+ *   `<sk_hex>|<pk_hex>`
+ *
+ * where `|` is the separator. The wallet extension exports this combined
+ * format from the Export Key panel (see popup.js `revealPrivateKey`).
+ * If a plain SK hex (no `|`) is provided and it is > 3000 chars, we
+ * attempt to split at the Falcon-512 SK size (2562 chars) and treat
+ * the remainder as the PK — this handles the concat export format.
+ *
+ * Returns the public key as hex (897 bytes = 1794 hex chars).
+ */
+export function derive_pubkey_from_sk(combined_or_sk_hex: string): string;
+
+/**
+ * Export a keypair as a combined `sk_hex|pk_hex` blob for safe backup.
+ * This is the format expected by `derive_pubkey_from_sk` and the import panel.
+ */
+export function export_keypair_combined(secret_key_hex: string, public_key_hex: string): string;
+
+/**
  * Generate a fresh 24-word BIP39 mnemonic.
  */
 export function generate_mnemonic(): string;
 
 /**
- * Generate a fresh random Falcon-512 keypair + BIP39 mnemonic.
+ * Generate a fresh Falcon-512 keypair deterministically from a new BIP39 mnemonic.
+ *
+ * The keypair is derived from the mnemonic using the same HD path as
+ * `import_wallet(mnemonic, "", 0)` — so the seed phrase ACTUALLY recovers
+ * the correct wallet. Previously the keypair was random and disconnected
+ * from the mnemonic (critical UX/security bug).
  *
  * Returns `{ mnemonic, address, public_key, secret_key }` (hex keys).
  * Caller MUST encrypt `secret_key` before storing it anywhere.
@@ -39,6 +69,19 @@ export function import_wallet(mnemonic_phrase: string, passphrase: string, index
 export function init_panic_hook(): void;
 
 /**
+ * Sign an arbitrary message with a Falcon-512 secret key.
+ *
+ * Uses domain tag `QUANTA_MSG_V1:` — signatures produced here cannot be
+ * replayed as transaction signatures (which use `QUANTA_TX_V1:`).
+ *
+ * `message`         — UTF-8 plaintext to sign (e.g. a login challenge).
+ * `secret_key_hex`  — hex of the Falcon-512 secret key.
+ *
+ * Returns hex of `raw_sig_bytes || sha3_256_hash` (same layout as sign_transaction).
+ */
+export function sign_message(message: string, secret_key_hex: string): string;
+
+/**
  * Sign transaction data with a Falcon-512 secret key.
  *
  * `tx_data_hex`    — hex of the raw transaction payload bytes.
@@ -57,6 +100,17 @@ export function sign_transaction(tx_data_hex: string, secret_key_hex: string): s
 export function validate_mnemonic(phrase: string): boolean;
 
 /**
+ * Verify a Falcon-512 message signature produced by `sign_message()`.
+ *
+ * `message`         — the original UTF-8 message that was signed.
+ * `signed_msg_hex`  — hex of the full blob (sig || hash) from sign_message.
+ * `pubkey_hex`      — hex of the 897-byte Falcon-512 public key.
+ *
+ * Returns `true` only on strict cryptographic success.
+ */
+export function verify_message(message: string, signed_msg_hex: string, pubkey_hex: string): boolean;
+
+/**
  * Verify a Falcon-512 signature (for local sanity-checking before submission).
  *
  * `hash_hex`       — hex of the 32-byte canonical signing hash.
@@ -72,13 +126,17 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly compute_signing_hash: (a: number, b: number) => [number, number, number, number];
+    readonly derive_pubkey_from_sk: (a: number, b: number) => [number, number, number, number];
+    readonly export_keypair_combined: (a: number, b: number, c: number, d: number) => [number, number];
     readonly generate_mnemonic: () => [number, number, number, number];
     readonly generate_wallet: () => [number, number, number];
     readonly get_address: (a: number, b: number) => [number, number, number, number];
     readonly import_wallet: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly init_panic_hook: () => void;
+    readonly sign_message: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly sign_transaction: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly validate_mnemonic: (a: number, b: number) => number;
+    readonly verify_message: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly verify_signature: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

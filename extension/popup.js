@@ -125,13 +125,24 @@ function closePanel(id) {
         <div class="form-group"><label>Recipient Address</label><input id="send-to" type="text" placeholder="0x..." autocomplete="off"></div>
         <div class="form-group"><label>Amount (QUA)</label><input id="send-amount" type="number" step="0.000001" placeholder="0.00"></div>
         <div class="form-group"><label>Fee (QUA)</label><input id="send-fee" type="number" step="0.000001" value="0.001"></div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="send-timelock-toggle" style="width:14px;height:14px;"> Time Lock Transfer
+          </label>
+        </div>
+        <div id="send-timelock-section" style="display:none;">
+          <div class="form-group">
+            <label>Lock until block height</label>
+            <input id="send-unlock-height" type="number" placeholder="e.g. 100000" min="1">
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Recipient cannot spend until this block. Min fee: 0.005 QUA.</p>
+          </div>
+        </div>
         <div class="form-group"><label>Wallet Password</label><input id="send-password" type="password" placeholder="Enter password"></div>
         <div id="send-error" class="error-msg hidden"></div>
         <div id="send-success" class="success-msg hidden"></div>
         <button id="btn-exec-send" class="btn btn-primary full-width" style="margin-top:10px;">Submit</button>`;
-      // Re-bind the submit button
-      const btn = document.getElementById('btn-exec-send');
-      if (btn) btn.addEventListener('click', sendTransaction);
+      document.getElementById('btn-exec-send')?.addEventListener('click', sendTransaction);
+      document.getElementById('send-timelock-toggle')?.addEventListener('change', handleTimelockToggle);
     }
   }
 
@@ -237,10 +248,12 @@ function copyMnemonic() {
 // ── Mnemonic confirm ──────────────────────────────────────────────────────────
 
 const confirmPositions = [];
+const selectedConfirm = {}; // { positionString: word }
 
 function setupConfirmInputs() {
   if (!state.mnemonic) return;
   const words = state.mnemonic.split(' ');
+  Object.keys(selectedConfirm).forEach(k => delete selectedConfirm[k]);
   confirmPositions.length = 0;
   while (confirmPositions.length < 3) {
     const r = Math.floor(Math.random() * 24);
@@ -249,20 +262,38 @@ function setupConfirmInputs() {
   confirmPositions.sort((a, b) => a - b);
   const grid = document.getElementById('confirm-inputs');
   if (!grid) return;
-  grid.innerHTML = confirmPositions.map(i => `
-    <div class="confirm-row">
-      <span class="confirm-num">Word #${i + 1}</span>
-      <input type="text" id="confirm-word-${i}" placeholder="word ${i + 1}" autocomplete="off" spellcheck="false">
-    </div>`).join('');
+  grid.innerHTML = confirmPositions.map(pos => {
+    const correct = words[pos];
+    const pool = words.filter((_, i) => i !== pos);
+    const wrongs = [];
+    const used = new Set([correct]);
+    while (wrongs.length < 3) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (!used.has(pick)) { wrongs.push(pick); used.add(pick); }
+    }
+    const opts = [correct, ...wrongs].sort(() => Math.random() - 0.5);
+    return `<div style="margin-bottom:18px;">
+      <div style="font-size:0.82rem;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Word #${pos + 1}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        ${opts.map(w => `<button class="btn btn-ghost word-pick-btn" data-pos="${pos}" data-word="${escapeHtml(w)}" style="font-family:var(--mono);font-size:0.85rem;padding:9px 8px;">${escapeHtml(w)}</button>`).join('')}
+      </div></div>`;
+  }).join('');
+  grid.querySelectorAll('.word-pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pos = btn.dataset.pos;
+      grid.querySelectorAll(`.word-pick-btn[data-pos="${pos}"]`).forEach(b => {
+        b.style.background = ''; b.style.color = ''; b.style.borderColor = '';
+      });
+      btn.style.background = 'var(--cyan)'; btn.style.color = '#0b0e14';
+      selectedConfirm[pos] = btn.dataset.word;
+    });
+  });
 }
 
 function confirmMnemonic() {
   const words = (state.mnemonic || '').split(' ');
   const errEl = document.getElementById('confirm-error');
-  const ok = confirmPositions.every(pos => {
-    const el = document.getElementById(`confirm-word-${pos}`);
-    return el && el.value.trim().toLowerCase() === words[pos];
-  });
+  const ok = confirmPositions.every(pos => selectedConfirm[String(pos)] === words[pos]);
   if (!ok) { if (errEl) errEl.classList.remove('hidden'); return; }
   if (errEl) errEl.classList.add('hidden');
   showScreen('screen-password');
@@ -534,7 +565,6 @@ function renderHistory() {
     const explorerAddr = `${state.settings.explorer_url || 'https://scan.quantachain.org'}/address/${state.address || ''}`;
     list.innerHTML = `
       <div class="tx-empty">
-        <div style="font-size:2rem;margin-bottom:8px;">📭</div>
         <div>No transactions yet</div>
         <button data-url="${explorerAddr}" style="margin-top:12px;background:none;border:none;color:var(--cyan);font-size:0.8rem;cursor:pointer;font-family:var(--font);">View on Explorer ↗</button>
       </div>`;
@@ -660,13 +690,21 @@ async function sendTransaction() {
       console.log(`[Quanta] overriding nonce from pending txs → submitting nonce: ${fetchedNonce}`);
     }
 
+    const timelockEl = document.getElementById('send-timelock-toggle');
+    const unlockHEl  = document.getElementById('send-unlock-height');
+    const isTimeLock = !!(timelockEl?.checked && unlockHEl?.value);
+    const unlockHeight = isTimeLock ? Math.max(0, parseInt(unlockHEl.value) || 0) : 0;
+    const networkId = state.settings.network === 'mainnet' ? 1 : 0;
+    const feeMicro = isTimeLock
+      ? Math.max(5000, Math.round(fee * MICROUNITS))
+      : Math.round(fee * MICROUNITS);
     const tx = {
       sender: state.address, recipient: to,
       amount: Math.round(amount * MICROUNITS),
-      fee: Math.round(fee * MICROUNITS),
-      nonce: fetchedNonce, timestamp,
-      lock_time: 0, tx_type: 'Transfer', sig_scheme: 'Falcon512',
-      network_id: state.settings.network === 'mainnet' ? 1 : 0,
+      fee: feeMicro, nonce: fetchedNonce, timestamp,
+      lock_time: 0,
+      tx_type: isTimeLock ? { TimeLockTransfer: { unlock_height: unlockHeight } } : 'Transfer',
+      sig_scheme: 'Falcon512', network_id: networkId,
     };
     const encoder = new TextEncoder();
     function toLeBytes(num) {
@@ -680,14 +718,19 @@ async function sendTransaction() {
       ...Array.from(encoder.encode(tx.recipient)),
       ...toLeBytes(tx.amount),
       ...toLeBytes(tx.timestamp),
-      ...toLeBytes(tx.fee),
+      ...toLeBytes(feeMicro),
       ...toLeBytes(tx.nonce),
       ...toLeBytes(tx.lock_time),
       ...pkBytes,
       0, // sig_scheme: Falcon512 = 0
-      tx.network_id & 0xff, (tx.network_id >> 8) & 0xff, (tx.network_id >> 16) & 0xff, (tx.network_id >> 24) & 0xff, // network_id (u32 LE)
-      0  // tx_type: Transfer = 0
+      networkId & 0xff, (networkId >> 8) & 0xff, (networkId >> 16) & 0xff, (networkId >> 24) & 0xff,
     ];
+    if (isTimeLock) {
+      payloadBytes.push(1); // tx_type byte: TimeLockTransfer
+      payloadBytes.push(...toLeBytes(unlockHeight));
+    } else {
+      payloadBytes.push(0); // tx_type byte: Transfer
+    }
     const hexPayload = payloadBytes.map(b => b.toString(16).padStart(2, '0')).join('');
     const hexSig = wasm.sign_transaction(hexPayload, walletSkHex);
     const hexToBytes = (hex) => Array.from(new Uint8Array((hex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
@@ -980,11 +1023,11 @@ async function doAddAccount() {
       return;
     }
 
-    const name = 'Account ' + (accounts.length + 2); // Account 2, 3, …
+    const name = 'Account ' + (accounts.length + 2);
     await saveAccountToList(result.secret_key, result.public_key, result.address, name);
 
     phrEl.value = '';
-    toast('\u2705 Account added: ' + name);
+    toast('Account added: ' + name);
     closePanel('add-account-panel');
     showPanel('account-panel');
     renderAccountsList();
@@ -1109,7 +1152,7 @@ async function doAddAccountPrivateKey() {
     await saveAccountToList(skHex, pkHex, address, name);
 
     skEl.value = '';
-    toast('\u2705 Account added: ' + name);
+    toast('Account added: ' + name);
     closePanel('add-account-panel');
 
     showPanel('account-panel');
@@ -1163,6 +1206,73 @@ function switchAddAccountTab(mode) {
   }
 }
 
+
+// ── Sign Message ──────────────────────────────────────────────────────────────
+
+async function signMessage() {
+  const msgEl = document.getElementById('sign-msg-text');
+  const pwdEl = document.getElementById('sign-msg-password');
+  const errEl = document.getElementById('sign-msg-error');
+  const resEl = document.getElementById('sign-msg-result');
+  const outEl = document.getElementById('sign-msg-output');
+  const btn   = document.getElementById('btn-exec-sign-msg');
+  if (!msgEl || !pwdEl) return;
+
+  const message  = msgEl.value.trim();
+  const password = pwdEl.value;
+  if (errEl) errEl.classList.add('hidden');
+  if (resEl) resEl.classList.add('hidden');
+
+  if (!message) {
+    if (errEl) { errEl.textContent = 'Enter a message to sign'; errEl.classList.remove('hidden'); } return;
+  }
+  if (!password) {
+    if (errEl) { errEl.textContent = 'Enter your wallet password'; errEl.classList.remove('hidden'); } return;
+  }
+  if (!wasm) {
+    if (errEl) { errEl.textContent = 'WASM not loaded'; errEl.classList.remove('hidden'); } return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Signing\u2026'; }
+
+  try {
+    let walletSkHex;
+    if (!activeAccountIndex) {
+      const wallet = await loadWalletData(password);
+      walletSkHex = wallet.skHex;
+    } else {
+      const accounts = await getAccounts();
+      const acc = accounts[activeAccountIndex - 1];
+      if (!acc) throw new Error('Account not found');
+      const key   = await deriveKey(password, new Uint8Array(acc.salt));
+      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(acc.iv) }, key, new Uint8Array(acc.data));
+      walletSkHex = JSON.parse(new TextDecoder().decode(plain)).skHex;
+    }
+
+    const sigHex = wasm.sign_message(message, walletSkHex);
+    if (outEl) outEl.textContent = sigHex;
+    if (resEl) resEl.classList.remove('hidden');
+    toast('Message signed');
+  } catch (e) {
+    if (errEl) {
+      errEl.textContent = e.name === 'OperationError' ? 'Wrong password' : 'Error: ' + e.message;
+      errEl.classList.remove('hidden');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign Message'; }
+  }
+}
+
+// ── TimeLock toggle helper ──────────────────────────────────────────────
+
+function handleTimelockToggle() {
+  const section = document.getElementById('send-timelock-section');
+  if (section) section.style.display = this.checked ? '' : 'none';
+  if (this.checked) {
+    const feeEl = document.getElementById('send-fee');
+    if (feeEl && parseFloat(feeEl.value) < 0.005) feeEl.value = '0.005';
+  }
+}
 
 async function loadSettings() {
   const s = await storageGet(SETTINGS_KEY);
@@ -1257,11 +1367,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   b('btn-reveal-key', revealPrivateKey);
   b('btn-copy-export', copyPrivateKey);
 
+  // Sign Message panel
+  b('btn-action-sign', () => showPanel('sign-msg-panel'));
+  b('btn-exec-sign-msg', signMessage);
+  b('btn-copy-sig', () => {
+    const outEl = document.getElementById('sign-msg-output');
+    if (outEl?.textContent) navigator.clipboard.writeText(outEl.textContent).then(() => toast('Signature copied'));
+  });
+
   b('btn-lock-wallet', lockWallet);
   b('btn-delete-wallet', deleteWallet);
   b('btn-save-settings', saveSettings);
   b('btn-exec-send', sendTransaction);
   b('btn-receive-copy', copyAddress);
+  // TimeLock toggle on initial panel load
+  document.getElementById('send-timelock-toggle')?.addEventListener('change', handleTimelockToggle);
 
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', (e) => switchTab(e.target.dataset.target, e.target));

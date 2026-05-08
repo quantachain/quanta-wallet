@@ -28,6 +28,70 @@ export function compute_signing_hash(tx_data_hex) {
 }
 
 /**
+ * Derive the Falcon-512 public key from a hex-encoded secret key.
+ *
+ * NOTE: falcon-rust does not expose a method to extract the public key from
+ * a standalone secret key (keys must be generated together via keygen).
+ * This function therefore expects a COMBINED key blob in the format:
+ *
+ *   `<sk_hex>|<pk_hex>`
+ *
+ * where `|` is the separator. The wallet extension exports this combined
+ * format from the Export Key panel (see popup.js `revealPrivateKey`).
+ * If a plain SK hex (no `|`) is provided and it is > 3000 chars, we
+ * attempt to split at the Falcon-512 SK size (2562 chars) and treat
+ * the remainder as the PK — this handles the concat export format.
+ *
+ * Returns the public key as hex (897 bytes = 1794 hex chars).
+ * @param {string} combined_or_sk_hex
+ * @returns {string}
+ */
+export function derive_pubkey_from_sk(combined_or_sk_hex) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(combined_or_sk_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.derive_pubkey_from_sk(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Export a keypair as a combined `sk_hex|pk_hex` blob for safe backup.
+ * This is the format expected by `derive_pubkey_from_sk` and the import panel.
+ * @param {string} secret_key_hex
+ * @param {string} public_key_hex
+ * @returns {string}
+ */
+export function export_keypair_combined(secret_key_hex, public_key_hex) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(secret_key_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(public_key_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.export_keypair_combined(ptr0, len0, ptr1, len1);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Generate a fresh 24-word BIP39 mnemonic.
  * @returns {string}
  */
@@ -51,7 +115,12 @@ export function generate_mnemonic() {
 }
 
 /**
- * Generate a fresh random Falcon-512 keypair + BIP39 mnemonic.
+ * Generate a fresh Falcon-512 keypair deterministically from a new BIP39 mnemonic.
+ *
+ * The keypair is derived from the mnemonic using the same HD path as
+ * `import_wallet(mnemonic, "", 0)` — so the seed phrase ACTUALLY recovers
+ * the correct wallet. Previously the keypair was random and disconnected
+ * from the mnemonic (critical UX/security bug).
  *
  * Returns `{ mnemonic, address, public_key, secret_key }` (hex keys).
  * Caller MUST encrypt `secret_key` before storing it anywhere.
@@ -121,6 +190,43 @@ export function init_panic_hook() {
 }
 
 /**
+ * Sign an arbitrary message with a Falcon-512 secret key.
+ *
+ * Uses domain tag `QUANTA_MSG_V1:` — signatures produced here cannot be
+ * replayed as transaction signatures (which use `QUANTA_TX_V1:`).
+ *
+ * `message`         — UTF-8 plaintext to sign (e.g. a login challenge).
+ * `secret_key_hex`  — hex of the Falcon-512 secret key.
+ *
+ * Returns hex of `raw_sig_bytes || sha3_256_hash` (same layout as sign_transaction).
+ * @param {string} message
+ * @param {string} secret_key_hex
+ * @returns {string}
+ */
+export function sign_message(message, secret_key_hex) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(secret_key_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.sign_message(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
  * Sign transaction data with a Falcon-512 secret key.
  *
  * `tx_data_hex`    — hex of the raw transaction payload bytes.
@@ -166,6 +272,30 @@ export function validate_mnemonic(phrase) {
     const ptr0 = passStringToWasm0(phrase, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.validate_mnemonic(ptr0, len0);
+    return ret !== 0;
+}
+
+/**
+ * Verify a Falcon-512 message signature produced by `sign_message()`.
+ *
+ * `message`         — the original UTF-8 message that was signed.
+ * `signed_msg_hex`  — hex of the full blob (sig || hash) from sign_message.
+ * `pubkey_hex`      — hex of the 897-byte Falcon-512 public key.
+ *
+ * Returns `true` only on strict cryptographic success.
+ * @param {string} message
+ * @param {string} signed_msg_hex
+ * @param {string} pubkey_hex
+ * @returns {boolean}
+ */
+export function verify_message(message, signed_msg_hex, pubkey_hex) {
+    const ptr0 = passStringToWasm0(message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(signed_msg_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(pubkey_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.verify_message(ptr0, len0, ptr1, len1, ptr2, len2);
     return ret !== 0;
 }
 
