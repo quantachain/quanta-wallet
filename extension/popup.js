@@ -59,7 +59,7 @@ async function loadWasm() {
     const url = chrome.runtime.getURL('pkg/quanta_wasm.js');
     const module = await import(url);
     const wasmUrl = chrome.runtime.getURL('pkg/quanta_wasm_bg.wasm');
-    await module.default(wasmUrl);
+    await module.default({ module_or_path: wasmUrl });
     wasm = module;
     console.log('[Quanta] WASM loaded');
   } catch (e) {
@@ -903,7 +903,11 @@ async function renderAccountsList() {
   const container = document.getElementById('accounts-list');
   if (!container) return;
   const accounts = await getAccounts();
-  const primary = { name: 'Account 1', address: state.address || '0x...', primary: true };
+
+  // Always read Account 1's address from storage — NOT state.address,
+  // which may have already been updated to a different account's address.
+  const { address: primaryAddress, pkHex: primaryPk } = await getPublicInfo();
+  const primary = { name: 'Account 1', address: primaryAddress || '0x...', primary: true };
   const display = [primary, ...accounts];
 
   container.innerHTML = display.map((acc, i) => {
@@ -911,13 +915,13 @@ async function renderAccountsList() {
     const short = addr.slice(0, 10) + '\u2026' + addr.slice(-6);
     const isActive = i === activeAccountIndex;
     return `
-      <div class="account-card" style="margin-bottom:8px;${isActive ? 'border:1px solid var(--cyan);' : ''}">
+      <div class="account-card" style="margin-bottom:8px;${isActive ? 'border:1px solid var(--cyan);background:rgba(0,212,255,0.04);' : ''}">
         <div class="account-details" style="cursor:pointer;flex:1;" data-switch-idx="${i}">
           <div class="account-name" style="display:flex;align-items:center;gap:6px;">
             ${escapeHtml(acc.name || 'Account ' + (i + 1))}
             ${isActive ? '<span style="font-size:0.7rem;color:var(--cyan);font-weight:600;">Active</span>' : ''}
           </div>
-          <div class="account-addr-full" style="font-size:0.72rem;">${escapeHtml(short)}</div>
+          <div class="account-addr-full" style="font-size:0.72rem;color:var(--text-muted);font-family:var(--mono);">${escapeHtml(short)}</div>
         </div>
         <button class="icon-btn" data-copy-addr="${escapeHtml(addr)}" title="Copy">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -932,19 +936,22 @@ async function renderAccountsList() {
   container.querySelectorAll('[data-switch-idx]').forEach(el =>
     el.addEventListener('click', () => switchAccount(parseInt(el.dataset.switchIdx))));
   container.querySelectorAll('[data-copy-addr]').forEach(el =>
-    el.addEventListener('click', () =>
-      navigator.clipboard.writeText(el.dataset.copyAddr).then(() => toast('Copied'))));
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(el.dataset.copyAddr).then(() => toast('Copied'));
+    }));
 
   const addBtn = document.getElementById('btn-add-account');
   if (addBtn) addBtn.style.display = display.length >= MAX_ACCOUNTS ? 'none' : '';
 }
+
 
 async function switchAccount(idx) {
   activeAccountIndex = idx;
   try {
     if (idx === 0) {
       const { address, pkHex } = await getPublicInfo();
-      state.address = address;
+      state.address   = address;
       state.publicKey = pkHex;
     } else {
       if (!state.sessionPassword) { toast('Session expired — lock and unlock the wallet first.'); return; }
@@ -963,31 +970,55 @@ async function switchAccount(idx) {
     state.balance   = 0;
     state.txHistory = [];
     updateMainUI();
+    // Re-render the account list with correct addresses + active indicator
+    await renderAccountsList();
     closePanel('account-panel');
-    toast('Switched to Account ' + (idx + 1));
+    toast('Switched to ' + (idx === 0 ? 'Account 1' : (await getAccounts())[idx - 1]?.name || 'Account ' + (idx + 1)));
     await refreshBalance();
     await loadHistory();
   } catch (e) {
-    toast('Error: ' + e.message);
+    toast('Error switching account: ' + e.message);
   }
 }
 
+
 async function addAccount() {
   const accounts = await getAccounts();
-  const total = 1 + accounts.length; // 1 primary + extras
+  const total = 1 + accounts.length;
   if (total >= MAX_ACCOUNTS) { toast('Maximum 10 accounts reached'); return; }
 
-  // Show the inline add-account panel
   showPanel('add-account-panel');
   closePanel('account-panel');
 
-  // Reset fields
-  const phrEl = document.getElementById('add-account-phrase');
-  const errEl = document.getElementById('add-account-error');
-  const btn   = document.getElementById('btn-add-account-go');
-  if (phrEl) phrEl.value = '';
-  if (errEl) errEl.classList.add('hidden');
-  if (btn)  { btn.disabled = false; btn.textContent = 'Import Account'; }
+  // Reset all sections — default to Derive tab
+  ['add-account-phrase','add-account-sk-hex','derive-password'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['add-account-error','add-account-pk-error','derive-error'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.classList.add('hidden');
+  });
+  // Show derive tab by default
+  switchAddTab('derive');
+}
+
+function switchAddTab(tab) {
+  const sections = { derive: 'add-section-derive', mnemonic: 'add-section-mnemonic', privkey: 'add-section-privkey' };
+  const tabs     = { derive: 'add-tab-derive',     mnemonic: 'add-tab-mnemonic',     privkey: 'add-tab-privkey' };
+  const activeStyle   = 'background:var(--cyan);color:#0b0e14;font-weight:700;';
+  const inactiveStyle = 'background:;color:;font-weight:;';
+  Object.entries(sections).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = key === tab ? '' : 'none';
+  });
+  Object.entries(tabs).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (key === tab) {
+      el.style.background = 'var(--cyan)'; el.style.color = '#0b0e14'; el.style.fontWeight = '700';
+    } else {
+      el.style.background = ''; el.style.color = ''; el.style.fontWeight = '';
+    }
+  });
 }
 
 async function doAddAccount() {
@@ -1035,6 +1066,90 @@ async function doAddAccount() {
     if (errEl) { errEl.textContent = 'Error: ' + e.message; errEl.classList.remove('hidden'); }
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Import Account'; }
+  }
+}
+
+
+// ── Derive account from same mnemonic (HD derivation) ────────────────────────
+
+async function doDerive() {
+  const pwEl  = document.getElementById('derive-password');
+  const errEl = document.getElementById('derive-error');
+  const btn   = document.getElementById('btn-derive-go');
+  if (!pwEl) return;
+
+  const password = pwEl.value;
+  if (!password) {
+    if (errEl) { errEl.textContent = 'Enter your wallet password'; errEl.classList.remove('hidden'); }
+    return;
+  }
+  if (errEl) errEl.classList.add('hidden');
+
+  if (!wasm) {
+    if (errEl) { errEl.textContent = 'WASM not loaded'; errEl.classList.remove('hidden'); }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Deriving…'; }
+
+  try {
+    // Decrypt primary wallet to get mnemonic
+    const walletData = await loadWalletData(password);
+    if (!walletData.mnemonic) throw new Error('No mnemonic stored — cannot derive. Restore your wallet from mnemonic first.');
+
+    // Find next unused HD index
+    const existingAccounts = await getAccounts();
+    // Existing accounts may have hdIndex stored; if not, use sequential
+    const usedIndices = new Set(existingAccounts.map(a => a.hdIndex).filter(x => typeof x === 'number'));
+    let nextIndex = 1; // index 0 is always the primary
+    while (usedIndices.has(nextIndex)) nextIndex++;
+
+    // Derive keypair
+    const result = wasm.import_wallet(walletData.mnemonic, '', nextIndex);
+
+    // Duplicate check
+    const allAddresses = [state.address, ...existingAccounts.map(a => a.address)].map(a => a?.toLowerCase());
+    if (allAddresses.includes(result.address?.toLowerCase())) {
+      if (errEl) { errEl.textContent = 'This account already exists in your wallet.'; errEl.classList.remove('hidden'); }
+      return;
+    }
+
+    const name = 'Account ' + (existingAccounts.length + 2);
+    // Save with hdIndex so we can always re-derive without storing the SK encrypted twice
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv   = crypto.getRandomValues(new Uint8Array(12));
+    const key  = await deriveKey(password, salt);
+    const plain = new TextEncoder().encode(JSON.stringify({ skHex: result.secret_key, pkHex: result.public_key, address: result.address }));
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+
+    const newAccounts = [...existingAccounts, {
+      name,
+      address:  result.address,
+      pkHex:    result.public_key,
+      hdIndex:  nextIndex,
+      salt: Array.from(salt),
+      iv:   Array.from(iv),
+      data: Array.from(new Uint8Array(cipher)),
+    }];
+    await storageSet(ACCOUNTS_KEY, newAccounts);
+
+    pwEl.value = '';
+    toast(name + ' derived successfully');
+    closePanel('add-account-panel');
+    showPanel('account-panel');
+    await renderAccountsList();
+    // Auto-switch to the new account
+    await switchAccount(newAccounts.length); // index = length (0-based primary + extras)
+  } catch (e) {
+    if (errEl) {
+      errEl.textContent = e.name === 'OperationError' ? 'Wrong password' : 'Error: ' + e.message;
+      errEl.classList.remove('hidden');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg> Derive Next Account';
+    }
   }
 }
 
@@ -1349,9 +1464,11 @@ window.addEventListener('DOMContentLoaded', async () => {
   b('btn-show-account', () => { showPanel('account-panel'); renderAccountsList(); });
   b('btn-add-account', addAccount);
   b('btn-add-account-go', doAddAccount);
-  // Add Account panel — mode tabs
-  b('add-tab-mnemonic', () => switchAddAccountTab('mnemonic'));
-  b('add-tab-privkey',  () => switchAddAccountTab('privkey'));
+  // Add Account panel — 3 mode tabs
+  b('add-tab-derive',   () => switchAddTab('derive'));
+  b('add-tab-mnemonic', () => switchAddTab('mnemonic'));
+  b('add-tab-privkey',  () => switchAddTab('privkey'));
+  b('btn-derive-go', doDerive);
   b('btn-add-account-pk-go', doAddAccountPrivateKey);
   b('header-btn-settings', () => showPanel('settings-panel'));
   b('btn-network-toggle', () => showPanel('settings-panel'));

@@ -26,12 +26,14 @@ const SETTINGS_KEY = 'quanta_settings_v1';
 const MICROUNITS = 1_000_000; // 1 QUA = 1_000_000 microunits
 
 let state = {
-  mnemonic: null,   // transient — only during creation flow
-  publicKey: null,   // hex
-  secretKey: null,   // hex — transient, zeroize ASAP after use
-  address: null,
+  mnemonic: null,          // transient — only during creation flow
+  publicKey: null,          // hex (active account)
+  secretKey: null,          // hex — transient, zeroize ASAP after use
+  address: null,            // active account address
   balance: 0,
   txHistory: [],
+  accounts: [],             // [{ index, name, address, pkHex }]
+  activeAccountIndex: 0,    // which account is currently viewed
   settings: {
     rpc_url: 'http://localhost:3000',
     explorer_url: 'https://explorer.quantachain.org',
@@ -143,7 +145,7 @@ async function createWallet() {
       pkHex = null;
       skHex = null;
       address = '0x0000000000000000000000000000000000000000';
-      toast('⚠ WASM not loaded — crypto operations limited');
+      toast('WASM not loaded — crypto operations limited');
     }
 
     state.mnemonic = mnemonicPhrase;
@@ -154,7 +156,7 @@ async function createWallet() {
     renderMnemonicGrid(mnemonicPhrase);
     showScreen('screen-mnemonic');
   } catch (e) {
-    toast('❌ Error: ' + e.message);
+    toast('Error: ' + e.message);
     showScreen('screen-create-warn');
   }
 }
@@ -173,8 +175,8 @@ function renderMnemonicGrid(phrase) {
 function copyMnemonic() {
   if (state.mnemonic) {
     navigator.clipboard.writeText(state.mnemonic)
-      .then(() => toast('✅ Mnemonic copied'))
-      .catch(() => toast('❌ Copy failed'));
+      .then(() => toast('Mnemonic copied'))
+      .catch(() => toast('Copy failed'));
   }
 }
 
@@ -277,7 +279,7 @@ async function setPassword() {
     state.mnemonic = null;
     await enterMain();
   } catch (e) {
-    toast('❌ Error saving wallet: ' + e.message);
+    toast('Error saving wallet: ' + e.message);
     showScreen('screen-password');
   }
 }
@@ -321,7 +323,7 @@ async function importWallet() {
       pkHex = null;
       skHex = null;
       address = '0x0000000000000000000000000000000000000000';
-      toast('⚠ WASM not loaded');
+      toast('WASM not loaded');
     }
 
     await saveWallet(skHex, pkHex, address, phrase, password);
@@ -348,20 +350,24 @@ async function deriveKey(password, salt) {
   );
 }
 
-async function saveWallet(skHex, pkHex, address, mnemonic, password) {
+async function saveWallet(skHex, pkHex, address, mnemonic, password, accounts = null) {
+  if (!accounts) {
+    accounts = [{ index: 0, name: 'Account 1', address, pkHex }];
+  }
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(password, salt);
-  const enc = new TextEncoder();
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await deriveKey(password, salt);
+  const enc  = new TextEncoder();
 
-  const plaintext = JSON.stringify({ skHex, pkHex, address, mnemonic });
+  const plaintext  = JSON.stringify({ skHex, pkHex, address, mnemonic, accounts });
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plaintext));
 
   const stored = {
     salt: Array.from(salt),
     iv: Array.from(iv),
     data: Array.from(new Uint8Array(ciphertext)),
-    address, pkHex,   // stored plaintext for display without decryption
+    address, pkHex,
+    accounts, // plain cache for display without decryption
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
 }
@@ -388,8 +394,8 @@ function walletExists() {
 function getStoredPublicInfo() {
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    return { address: s.address || null, pkHex: s.pkHex || null };
-  } catch { return { address: null, pkHex: null }; }
+    return { address: s.address || null, pkHex: s.pkHex || null, accounts: s.accounts || null };
+  } catch { return { address: null, pkHex: null, accounts: null }; }
 }
 
 // ============================================================================
@@ -397,9 +403,22 @@ function getStoredPublicInfo() {
 // ============================================================================
 
 async function enterMain() {
-  const { address, pkHex } = getStoredPublicInfo();
-  state.address = address;
-  state.publicKey = pkHex;
+  const { address, pkHex, accounts } = getStoredPublicInfo();
+
+  // Build accounts (backward-compat: old wallets have no accounts array)
+  if (accounts && accounts.length > 0) {
+    state.accounts = accounts;
+  } else {
+    state.accounts = [{ index: 0, name: 'Account 1', address, pkHex }];
+  }
+
+  // Ensure activeAccountIndex is valid
+  if (!state.accounts.find(a => a.index === state.activeAccountIndex)) {
+    state.activeAccountIndex = state.accounts[0].index;
+  }
+  const activeAcc = state.accounts.find(a => a.index === state.activeAccountIndex);
+  state.address   = activeAcc.address;
+  state.publicKey = activeAcc.pkHex;
 
   loadSettings();
   updateMainUI();
@@ -409,6 +428,11 @@ async function enterMain() {
 }
 
 function updateMainUI() {
+  // Account name in header switcher
+  const activeAcc = state.accounts.find(a => a.index === state.activeAccountIndex);
+  const nameEl = document.getElementById('active-account-name');
+  if (nameEl) nameEl.textContent = activeAcc ? activeAcc.name : 'Account 1';
+
   const addrEl = document.getElementById('wallet-address');
   if (addrEl && state.address) addrEl.textContent = state.address;
 
@@ -527,7 +551,15 @@ async function sendTransaction() {
   try {
     // Decrypt wallet to get secret key
     const walletData = await loadWallet(password);
-    const skHex = walletData.skHex;
+    let skHex;
+    if (state.activeAccountIndex === 0) {
+      skHex = walletData.skHex;
+    } else {
+      if (!wasm) throw new Error('WASM not loaded — cannot derive account keys');
+      const derived = wasm.import_wallet(walletData.mnemonic, '', state.activeAccountIndex);
+      skHex = derived.secret_key;
+      state.publicKey = derived.public_key; // ensure correct pk for this account
+    }
 
     if (!skHex || !wasm) {
       throw new Error(wasm ? 'No secret key in stored wallet' : 'WASM not loaded — cannot sign');
@@ -620,9 +652,9 @@ async function sendTransaction() {
     }
 
     const txHash = respData.tx_hash || '';
-    successEl.innerHTML = `✅ Transaction submitted!${txHash ? `<br><small style="font-family:monospace;word-break:break-all">${escapeHtml(txHash)}</small>` : ''}`;
+    successEl.innerHTML = `Transaction submitted!${txHash ? `<br><small style="font-family:monospace;word-break:break-all">${escapeHtml(txHash)}</small>` : ''}`;
     successEl.classList.remove('hidden');
-    toast('✅ Transaction sent!');
+    toast('Transaction sent!');
 
     // Clear form
     document.getElementById('send-to').value = '';
@@ -632,9 +664,9 @@ async function sendTransaction() {
     setTimeout(() => { closePanel('send-panel'); refreshBalance(); loadHistory(); }, 2500);
   } catch (e) {
     if (e.name === 'OperationError') {
-      errEl.textContent = '❌ Wrong password';
+      errEl.textContent = 'Wrong password';
     } else {
-      errEl.textContent = '❌ ' + e.message;
+      errEl.textContent = e.message;
     }
     errEl.classList.remove('hidden');
   }
@@ -696,7 +728,7 @@ function renderQr() {
     // Simple ASCII fallback
     container.innerHTML = `
       <div style="padding:16px;text-align:center;font-size:0.7rem;font-family:monospace;color:#333;word-break:break-all;max-width:200px">
-        📱 QR<br><br>${addr}
+        QR Code<br><br>${addr}
       </div>`;
   }
 }
@@ -711,15 +743,23 @@ function lockWallet() {
   state.address = null;
   state.balance = 0;
   state.txHistory = [];
-  showScreen('screen-welcome');
-  toast('🔒 Wallet locked');
+  state.accounts = [];
+  state.activeAccountIndex = 0;
+  // Show unlock screen if wallet data exists, otherwise show welcome
+  if (walletExists()) {
+    const { address } = getStoredPublicInfo();
+    showUnlockScreen(address);
+  } else {
+    showScreen('screen-welcome');
+  }
+  toast('Wallet locked');
 }
 
 function deleteWallet() {
-  if (!confirm('⚠ Delete ALL wallet data? This cannot be undone. Make sure you have your mnemonic backed up.')) return;
+  if (!confirm('Delete ALL wallet data? This cannot be undone. Make sure you have your mnemonic backed up.')) return;
   localStorage.removeItem(STORAGE_KEY);
   lockWallet();
-  toast('🗑 Wallet deleted');
+  toast('Wallet deleted');
 }
 
 function exportWallet() {
@@ -732,7 +772,7 @@ function exportWallet() {
   a.download = `quanta-wallet-${Date.now()}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  toast('📤 Wallet exported');
+  toast('Wallet exported');
 }
 
 // ============================================================================
@@ -742,8 +782,8 @@ function exportWallet() {
 function copyAddress() {
   if (!state.address) { toast('No address loaded'); return; }
   navigator.clipboard.writeText(state.address)
-    .then(() => toast('📋 Address copied'))
-    .catch(() => toast('❌ Copy failed'));
+    .then(() => toast('Address copied'))
+    .catch(() => toast('Copy failed'));
 }
 
 // ============================================================================
@@ -766,7 +806,7 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
   updateMainUI();
   closePanel('settings-panel');
-  toast('✅ Settings saved');
+  toast('Settings saved');
   refreshBalance();
 }
 
@@ -835,11 +875,16 @@ function showUnlockScreen(address) {
           <label>Password</label>
           <div class="input-wrap">
             <input id="unlock-pw" type="password" placeholder="Your wallet password" onkeydown="if(event.key==='Enter')unlockWallet()">
-            <button class="eye-btn" onclick="togglePw('unlock-pw')">👁</button>
+            <button class="eye-btn" onclick="togglePw('unlock-pw')" title="Toggle visibility">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
           </div>
         </div>
         <div id="unlock-error" class="error-msg hidden">Wrong password. Try again.</div>
-        <button class="btn btn-primary" onclick="unlockWallet()">🔓 Unlock</button>
+        <button class="btn btn-primary" onclick="unlockWallet()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+          Unlock
+        </button>
         <hr class="divider" style="margin:20px 0">
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="showScreen('screen-welcome')">Use Different Wallet</button>
       </div>`;
@@ -856,6 +901,93 @@ async function unlockWallet() {
     await loadWallet(pw); // just to validate password
     await enterMain();
   } catch {
+    errEl.classList.remove('hidden');
+  }
+}
+
+
+// ============================================================================
+// MULTI-ACCOUNT MANAGEMENT
+// ============================================================================
+
+function switchAccount(index) {
+  const acc = state.accounts.find(a => a.index === index);
+  if (!acc) return;
+  state.activeAccountIndex = index;
+  state.address   = acc.address;
+  state.publicKey = acc.pkHex;
+  state.balance   = 0;
+  state.txHistory = [];
+  updateMainUI();
+  renderAccountList();
+  closePanel('account-panel');
+  document.getElementById('balance-val').textContent = '—';
+  refreshBalance();
+  loadHistory();
+}
+
+function renderAccountList() {
+  const list = document.getElementById('account-list');
+  if (!list) return;
+  list.innerHTML = state.accounts.map(acc => `
+    <div class="account-item ${acc.index === state.activeAccountIndex ? 'acc-active' : ''}"
+         onclick="switchAccount(${acc.index})">
+      <div class="acc-avatar" style="background:hsl(${(acc.index * 67 + 180) % 360},70%,45%)">
+        ${escapeHtml(acc.name.slice(0, 1))}${acc.index + 1}
+      </div>
+      <div class="acc-info">
+        <div class="acc-name">${escapeHtml(acc.name)}</div>
+        <div class="acc-addr">${acc.address ? acc.address.slice(0,10)+'\u2026'+acc.address.slice(-6) : '\u2014'}</div>
+      </div>
+      ${acc.index === state.activeAccountIndex
+        ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+        : ''}
+    </div>`).join('');
+}
+
+function toggleAddAccountForm() {
+  const form = document.getElementById('add-account-form');
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    document.getElementById('add-account-pw').focus();
+  }
+}
+
+async function addAccount() {
+  const pw    = document.getElementById('add-account-pw').value;
+  const errEl = document.getElementById('add-account-error');
+  errEl.classList.add('hidden');
+  if (!pw) { errEl.textContent = 'Enter your wallet password'; errEl.classList.remove('hidden'); return; }
+
+  try {
+    const walletData = await loadWallet(pw);
+    if (!walletData.mnemonic) throw new Error('No mnemonic — cannot derive new account');
+    if (!wasm) throw new Error('WASM not loaded');
+
+    // Find next index (fill gaps)
+    const used = new Set(state.accounts.map(a => a.index));
+    let nextIdx = 0;
+    while (used.has(nextIdx)) nextIdx++;
+
+    const result = wasm.import_wallet(walletData.mnemonic, '', nextIdx);
+    const newAcc = {
+      index:   nextIdx,
+      name:    `Account ${nextIdx + 1}`,
+      address: result.address,
+      pkHex:   result.public_key,
+    };
+
+    const newAccounts = [...state.accounts, newAcc];
+    await saveWallet(walletData.skHex, walletData.pkHex, walletData.address, walletData.mnemonic, pw, newAccounts);
+    state.accounts = newAccounts;
+
+    document.getElementById('add-account-pw').value = '';
+    document.getElementById('add-account-form').classList.add('hidden');
+    renderAccountList();
+    switchAccount(nextIdx);
+    toast('Account ' + (nextIdx + 1) + ' added');
+  } catch (e) {
+    errEl.textContent = e.name === 'OperationError' ? 'Wrong password' : e.message;
     errEl.classList.remove('hidden');
   }
 }
