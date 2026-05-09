@@ -1,0 +1,10 @@
+# Release zips — built locally, not tracked in git
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
