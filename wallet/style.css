@@ -12,12 +12,12 @@
   --bg-glass: rgba(255,255,255,0.04);
   --bg-glass-hover: rgba(255,255,255,0.07);
   --border: rgba(255,255,255,0.08);
-  --border-accent: rgba(0,212,255,0.3);
+  --border-accent: rgba(196,237,95,0.3);
 
-  --cyan:  #00d4ff;
-  --mint:  #00ff88;
-  --grad:  linear-gradient(135deg, #00d4ff, #00ff88);
-  --grad-r: linear-gradient(135deg, #00ff88, #00d4ff);
+  --cyan:  #C4ED5F;
+  --mint:  #C4ED5F;
+  --grad:  linear-gradient(135deg, #C4ED5F, #a8d43a);
+  --grad-r: linear-gradient(135deg, #a8d43a, #C4ED5F);
 
   --text-primary:   #f0f4f8;
   --text-secondary: #8899aa;
@@ -25,7 +25,7 @@
 
   --danger:  #ff4d6a;
   --warn:    #ffb830;
-  --success: #00ff88;
+  --success: #C4ED5F;
 
   --radius-sm: 8px;
   --radius-md: 14px;
@@ -33,7 +33,7 @@
   --radius-xl: 28px;
 
   --shadow: 0 8px 32px rgba(0,0,0,0.5);
-  --shadow-cyan: 0 0 30px rgba(0,212,255,0.12);
+  --shadow-cyan: 0 0 30px rgba(196,237,95,0.08);
 
   --font: 'Inter', system-ui, sans-serif;
   --mono: 'JetBrains Mono', monospace;
@@ -56,8 +56,8 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: 0;
   background:
-    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(0,212,255,0.06) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 50% at 80% 90%, rgba(0,255,136,0.05) 0%, transparent 70%);
+    radial-gradient(ellipse 60% 40% at 20% 10%, rgba(196,237,95,0.05) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 50% at 80% 90%, rgba(168,212,58,0.04) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -97,7 +97,7 @@ body::before {
 .logo-ring {
   position: absolute; inset: 0;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, #00d4ff, #00ff88, #00d4ff);
+  background: conic-gradient(from 0deg, #C4ED5F, #a8d43a, #C4ED5F);
   animation: spin 6s linear infinite;
   opacity: 0.6;
 }
@@ -457,8 +457,8 @@ input[type="number"] {
 }
 .chain-name { font-weight: 600; font-size: 0.9rem; }
 .network-badge {
-  background: rgba(0,255,136,0.1);
-  border: 1px solid rgba(0,255,136,0.25);
+  background: rgba(196,237,95,0.1);
+  border: 1px solid rgba(196,237,95,0.25);
   color: var(--mint);
   font-size: 0.72rem; font-weight: 600;
   padding: 3px 10px; border-radius: 999px;
@@ -485,7 +485,7 @@ input[type="number"] {
   content: '';
   position: absolute; top: -40px; right: -40px;
   width: 160px; height: 160px;
-  background: radial-gradient(circle, rgba(0,212,255,0.08), transparent 70%);
+  background: radial-gradient(circle, rgba(196,237,95,0.07), transparent 70%);
   pointer-events: none;
 }
 .balance-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 6px; }
@@ -782,8 +782,8 @@ input[type="number"] {
 
 /* Add-account form */
 .add-account-form {
-  background: rgba(0,212,255,0.04);
-  border: 1px solid rgba(0,212,255,0.15);
+  background: rgba(196,237,95,0.04);
+  border: 1px solid rgba(196,237,95,0.15);
   border-radius: var(--radius-md);
   padding: 16px;
   margin-top: 12px;

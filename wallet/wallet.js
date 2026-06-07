@@ -36,7 +36,7 @@ let state = {
   activeAccountIndex: 0,    // which account is currently viewed
   settings: {
     rpc_url: 'http://localhost:3000',
-    explorer_url: 'https://explorer.quantachain.org',
+    explorer_url: 'https://quascan.xyz',
     network: 'testnet',
   },
 };
@@ -600,7 +600,7 @@ async function sendTransaction() {
       recipBytes.length +
       8 + 8 + 8 + 8 + 8 +   // amount, timestamp, fee, nonce, lock_time
       pkBytes.length +
-      1 + 4 + 1               // sig_scheme, network_id, tx_type
+      1 + 4 + 4 + 1           // sig_scheme, network_id, payload_len (u32), tx_type
     );
     let off = 0;
     signingBuf.set(senderBytes, off); off += senderBytes.length;
@@ -617,12 +617,20 @@ async function sendTransaction() {
     signingBuf[off++] = (networkId >> 8) & 0xff;
     signingBuf[off++] = (networkId >> 16) & 0xff;
     signingBuf[off++] = (networkId >> 24) & 0xff;
+    signingBuf[off++] = 0; // payload_len byte 0
+    signingBuf[off++] = 0; // payload_len byte 1
+    signingBuf[off++] = 0; // payload_len byte 2
+    signingBuf[off++] = 0; // payload_len byte 3
     signingBuf[off++] = 0;  // tx_type    = Transfer
 
-    const signingHex     = toHex(signingBuf);
-    const signatureHex   = wasm.sign_transaction(signingHex, skHex);
+    const signingHex   = toHex(signingBuf);
+    const signatureHex = wasm.sign_transaction(signingHex, skHex);
 
-    // ── Build TX payload for submission (signature and public_key as hex strings)
+    // ── Convert hex → byte arrays (serde_json deserializes Vec<u8> as [u8] array, not hex string)
+    const sigBytes = Array.from(hexToBytes(signatureHex));
+    const pkBytesArr = Array.from(hexToBytes(state.publicKey || ''));
+
+    // ── Build TX payload for submission
     const tx = {
       sender:     state.address,
       recipient:  to,
@@ -630,8 +638,8 @@ async function sendTransaction() {
       fee:        feeMu,
       nonce,
       timestamp,
-      signature:  signatureHex,
-      public_key: state.publicKey,
+      signature:  sigBytes,
+      public_key: pkBytesArr,
       lock_time:  lockTime,
       tx_type:    'Transfer',
       sig_scheme: 'Falcon512',
@@ -794,7 +802,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
     state.settings.rpc_url = s.rpc_url || 'http://localhost:3000';
-    state.settings.explorer_url = s.explorer_url || 'https://explorer.quantachain.org';
+    state.settings.explorer_url = s.explorer_url || 'https://quascan.xyz';
     state.settings.network = s.network || 'testnet';
   } catch { }
 }

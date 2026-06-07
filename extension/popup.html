@@ -28,7 +28,7 @@
   <div id="screen-welcome" class="screen active">
     <div class="hero">
       <div class="logo-wrap" style="margin-bottom: 24px;">
-        <img src="icons/quanta-transparent-bg-logo.png" style="width: 80px; height: 80px; object-fit: contain;">
+        <img src="icons/icon128.png" style="width: 80px; height: 80px; object-fit: cover; border-radius: 22px;">
       </div>
       <h1 class="hero-title">Quanta Wallet</h1>
       <p class="hero-sub">Post-Quantum · Falcon-512 · NIST PQC</p>
@@ -194,7 +194,7 @@
 
     <div class="balance-area">
       <div class="logo-top">
-        <img src="icons/quanta-transparent-bg-logo.png" alt="Q">
+        <img src="icons/icon128.png" alt="Q">
       </div>
       <div class="balance-amount"><span id="balance-val">0.000000</span> <span class="balance-unit">QUA</span></div>
 
@@ -256,10 +256,20 @@
     <div class="main-scroll-area">
       <div id="tab-assets" class="tab-content active">
         <div class="asset-row">
-          <div class="asset-logo"><img src="icons/quanta-transparent-bg-logo.png"
-              style="width:100%;height:100%;object-fit:cover;"></div>
-          <div class="asset-info"><span class="asset-name">Quanta</span><span class="asset-ticker">QUA</span></div>
-          <div class="asset-bal"><span id="asset-bal-val">0.000000</span></div>
+          <div class="asset-logo">
+            <img src="icons/icon128.png" style="width:100%;height:100%;object-fit:cover;">
+          </div>
+          <div class="asset-info">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="asset-name">Quanta</span>
+              <span style="font-size:0.65rem;font-weight:700;background:rgba(196,237,95,0.12);color:var(--accent);padding:2px 7px;border-radius:99px;border:1px solid rgba(196,237,95,0.2);">Native</span>
+            </div>
+            <span class="asset-ticker">QuantaChain · QUA</span>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-family:var(--mono);font-size:0.92rem;font-weight:700;color:var(--text-primary);" id="asset-bal-val">0.000000</div>
+            <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">QUA</div>
+          </div>
         </div>
       </div>
 
@@ -273,6 +283,7 @@
 
   <!-- SIDE PANELS -->
   <div id="account-panel" class="side-panel bottom-up">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Accounts</h3><button class="close-panel" data-panel="account-panel">✕</button>
     </div>
@@ -310,6 +321,7 @@
   </div>
 
   <div id="export-panel" class="side-panel bottom-up" style="z-index: 101;">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Export Keys</h3><button class="close-panel" data-panel="export-panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
     </div>
@@ -336,6 +348,7 @@
   </div>
 
   <div id="send-panel" class="side-panel bottom-up">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Send QUA</h3><button class="close-panel" data-panel="send-panel">✕</button>
     </div>
@@ -367,6 +380,7 @@
   </div>
 
   <div id="receive-panel" class="side-panel bottom-up">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Receive QUA</h3><button class="close-panel" data-panel="receive-panel">✕</button>
     </div>
@@ -379,6 +393,7 @@
   </div>
 
   <div id="settings-panel" class="side-panel bottom-up">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Network Settings</h3><button class="close-panel" data-panel="settings-panel">✕</button>
     </div>
@@ -386,7 +401,7 @@
       <div class="form-group"><label>Node RPC URL</label><input id="rpc-url" type="text"
           placeholder="https://rpc.quantachain.org"></div>
       <div class="form-group"><label>Block Explorer URL</label><input id="explorer-url" type="text"
-          placeholder="https://scan.quantachain.org"></div>
+          placeholder="https://quascan.xyz"></div>
       <div class="form-group"><label>Network</label>
         <select id="network-select">
           <option value="testnet" selected>Testnet</option>
@@ -398,6 +413,7 @@
   </div>
 
   <div id="add-account-panel" class="side-panel bottom-up" style="z-index:102;">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Add Account</h3><button class="close-panel" data-panel="add-account-panel">&#x2715;</button>
     </div>
@@ -454,6 +470,7 @@
 
   <!-- SIGN MESSAGE PANEL -->
   <div id="sign-msg-panel" class="side-panel bottom-up">
+    <div class="panel-handle"></div>
     <div class="panel-header">
       <h3>Sign Message</h3><button class="close-panel" data-panel="sign-msg-panel">✕</button>
     </div>

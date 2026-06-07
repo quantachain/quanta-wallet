@@ -24,16 +24,11 @@
       <div class="logo-wrap">
         <div class="logo-ring"></div>
         <div class="logo-inner">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <path d="M20 4L36 13V27L20 36L4 27V13L20 4Z" stroke="url(#g1)" stroke-width="2" fill="none" />
-            <path d="M20 12L28 17V23L20 28L12 23V17L20 12Z" fill="url(#g1)" opacity="0.3" />
-            <circle cx="20" cy="20" r="3" fill="url(#g1)" />
-            <defs>
-              <linearGradient id="g1" x1="4" y1="4" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#00d4ff" />
-                <stop offset="1" stop-color="#00ff88" />
-              </linearGradient>
-            </defs>
+          <!-- Quanta brand logo #C4ED5F -->
+          <svg width="40" height="40" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M383.351 303.907C431.361 192.364 590.333 194.748 634.978 307.681L693.104 454.72C698.647 468.74 706.468 481.749 716.251 493.22L790.372 580.129C870.165 673.688 794.838 816.711 672.55 803.839L528.079 788.631C518.553 787.628 508.947 787.628 499.421 788.631L341.991 805.203C221.482 817.888 145.708 678.634 221.809 584.336L297.536 490.501C305.358 480.809 311.821 470.094 316.745 458.654L383.351 303.907Z" fill="#C4ED5F"/>
+            <ellipse cx="512" cy="589" rx="135" ry="139" fill="#080a10"/>
+            <path d="M564.5 588.613C564.5 616.503 541.89 639.113 514 639.113C486.11 639.113 463.5 616.503 463.5 588.613C463.5 560.722 486.11 538.113 514 538.113C541.89 538.113 564.5 560.722 564.5 588.613Z" fill="#C4ED5F"/>
           </svg>
         </div>
       </div>
@@ -200,7 +195,15 @@
     <!-- Top Bar -->
     <header class="wallet-header">
       <div class="wallet-brand">
-        <div class="mini-logo">Q</div>
+        <!-- Quanta brand logo in header -->
+        <div class="mini-logo" style="background:none;border-radius:6px;overflow:hidden;padding:0;">
+          <svg width="30" height="30" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="1024" height="1024" fill="#080a10"/>
+            <path d="M383.351 303.907C431.361 192.364 590.333 194.748 634.978 307.681L693.104 454.72C698.647 468.74 706.468 481.749 716.251 493.22L790.372 580.129C870.165 673.688 794.838 816.711 672.55 803.839L528.079 788.631C518.553 787.628 508.947 787.628 499.421 788.631L341.991 805.203C221.482 817.888 145.708 678.634 221.809 584.336L297.536 490.501C305.358 480.809 311.821 470.094 316.745 458.654L383.351 303.907Z" fill="#C4ED5F"/>
+            <ellipse cx="512" cy="589" rx="135" ry="139" fill="#080a10"/>
+            <path d="M564.5 588.613C564.5 616.503 541.89 639.113 514 639.113C486.11 639.113 463.5 616.503 463.5 588.613C463.5 560.722 486.11 538.113 514 538.113C541.89 538.113 564.5 560.722 564.5 588.613Z" fill="#C4ED5F"/>
+          </svg>
+        </div>
         <span class="chain-name">QuantaChain</span>
       </div>
       <button class="account-switcher-btn" id="active-account-name" onclick="showPanel('account-panel');renderAccountList()">
@@ -367,7 +370,7 @@
       </div>
       <div class="form-group">
         <label>Block Explorer URL</label>
-        <input id="explorer-url" type="text" placeholder="https://explorer.quantachain.org">
+        <input id="explorer-url" type="text" placeholder="https://quascan.xyz">
       </div>
       <div class="form-group">
         <label>Network</label>

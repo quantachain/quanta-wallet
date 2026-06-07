@@ -24,7 +24,7 @@ let state = {
   sessionPassword: null, // kept in memory while wallet is unlocked (like MetaMask)
   settings: {
     rpc_url: 'https://rpc.quantachain.org',
-    explorer_url: 'https://scan.quantachain.org',
+    explorer_url: 'https://quascan.xyz',
     network: 'testnet',
   },
 };
@@ -562,18 +562,27 @@ function renderHistory() {
   if (!list) return;
 
   if (!state.txHistory.length) {
-    const explorerAddr = `${state.settings.explorer_url || 'https://scan.quantachain.org'}/address/${state.address || ''}`;
+    const explorerAddr = `${state.settings.explorer_url || 'https://quascan.xyz'}/address/${state.address || ''}`;
     list.innerHTML = `
       <div class="tx-empty">
-        <div>No transactions yet</div>
-        <button data-url="${explorerAddr}" style="margin-top:12px;background:none;border:none;color:var(--cyan);font-size:0.8rem;cursor:pointer;font-family:var(--font);">View on Explorer ↗</button>
+        <div style="width:52px;height:52px;border-radius:50%;background:rgba(196,237,95,0.08);border:1px solid rgba(196,237,95,0.15);display:flex;align-items:center;justify-content:center;margin-bottom:14px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(196,237,95,0.6)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div style="font-weight:700;font-size:0.88rem;color:var(--text-primary);margin-bottom:5px;">No activity yet</div>
+        <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:16px;">Your transactions will appear here</div>
+        <button data-url="${explorerAddr}" style="display:inline-flex;align-items:center;gap:6px;background:var(--glass);border:1px solid var(--border);color:var(--accent);font-size:0.78rem;font-weight:700;padding:8px 16px;border-radius:99px;cursor:pointer;font-family:var(--font);transition:all 0.2s;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          View on QuaScan
+        </button>
       </div>`;
     list.querySelectorAll('[data-url]').forEach(el =>
       el.addEventListener('click', () => openTab(el.dataset.url)));
     return;
   }
 
-  const explorerBase = state.settings.explorer_url || 'https://scan.quantachain.org';
+  const explorerBase = state.settings.explorer_url || 'https://quascan.xyz';
   list.innerHTML = state.txHistory.slice(0, 30).map(tx => {
     const out = tx.sender?.toLowerCase() === state.address?.toLowerCase();
     const amount = ((tx.amount_microunits ?? tx.amount ?? 0) / MICROUNITS).toFixed(6);
@@ -724,6 +733,7 @@ async function sendTransaction() {
       ...pkBytes,
       0, // sig_scheme: Falcon512 = 0
       networkId & 0xff, (networkId >> 8) & 0xff, (networkId >> 16) & 0xff, (networkId >> 24) & 0xff,
+      0, 0, 0, 0, // payload.len() as u32 = 0
     ];
     if (isTimeLock) {
       payloadBytes.push(1); // tx_type byte: TimeLockTransfer
@@ -745,7 +755,7 @@ async function sendTransaction() {
     if (!resp.ok || result.success === false) throw new Error(result.error || JSON.stringify(result));
 
     const txHash = result.tx_hash || '';
-    const explorerBase = state.settings.explorer_url || 'https://scan.quantachain.org';
+    const explorerBase = state.settings.explorer_url || 'https://quascan.xyz';
     const explorerUrl = txHash ? `${explorerBase}/tx/${txHash}` : '';
 
     // Transform the send panel into a clean confirmation screen (MetaMask-style)
@@ -1393,7 +1403,7 @@ async function loadSettings() {
   const s = await storageGet(SETTINGS_KEY);
   if (s) {
     state.settings.rpc_url = s.rpc_url || 'https://rpc.quantachain.org';
-    state.settings.explorer_url = s.explorer_url || 'https://scan.quantachain.org';
+    state.settings.explorer_url = s.explorer_url || 'https://quascan.xyz';
     state.settings.network = s.network || 'testnet';
   }
 }
@@ -1403,7 +1413,7 @@ async function saveSettings() {
   const expEl = document.getElementById('explorer-url');
   const selEl = document.getElementById('network-select');
   if (urlEl) state.settings.rpc_url = urlEl.value.trim() || 'https://rpc.quantachain.org';
-  if (expEl) state.settings.explorer_url = expEl.value.trim() || 'https://scan.quantachain.org';
+  if (expEl) state.settings.explorer_url = expEl.value.trim() || 'https://quascan.xyz';
   if (selEl) state.settings.network = selEl.value;
   await storageSet(SETTINGS_KEY, state.settings);
   updateMainUI(); closePanel('settings-panel');
