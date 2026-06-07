@@ -106,20 +106,35 @@ chrome.windows.onRemoved.addListener((windowId) => {
 
 async function handleRpcRequest(method, params) {
   // ALWAYS open the popup for Web3 requests (MetaMask-style)
-  // The popup itself will check if it's locked, prompt password if needed,
-  // and handle the specific request (connect, sign, etc.)
-  
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const rpcId = Date.now() + "_" + Math.random().toString(36).substring(2);
     rpcResolvers.set(rpcId, { resolve, reject });
     
     const url = chrome.runtime.getURL(`popup.html?rpcMethod=${method}&rpcParams=${encodeURIComponent(JSON.stringify(params))}&rpcId=${rpcId}`);
     
+    const width = 360;
+    const height = 600;
+    let left;
+    let top;
+    
+    try {
+      const currentWindow = await chrome.windows.getLastFocused();
+      if (currentWindow && currentWindow.left !== undefined && currentWindow.width !== undefined) {
+        // Position at the top right of the current window, like MetaMask
+        left = Math.round(currentWindow.left + currentWindow.width - width - 20);
+        top = Math.round(currentWindow.top || 0);
+      }
+    } catch (e) {
+      console.warn("Could not get focused window position", e);
+    }
+    
     chrome.windows.create({
       url,
       type: 'popup',
-      width: 360,
-      height: 600
+      width,
+      height,
+      left,
+      top
     }, (win) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
