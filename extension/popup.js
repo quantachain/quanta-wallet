@@ -427,8 +427,16 @@ async function loadWalletData(password) {
   const key = await deriveKey(password, salt);
   const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
   const result = JSON.parse(new TextDecoder().decode(plain));
+  
   // Keep password alive in session so Add Account doesn't need to re-ask
   state.sessionPassword = password;
+  
+  // Expose decrypted keys to background.js for Web3 Provider signing
+  await chrome.storage.session.set({ 
+    activeAddress: result.address,
+    activeSecretKey: result.skHex
+  });
+  
   return result;
 }
 
@@ -1522,6 +1530,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (overlay) overlay.addEventListener('click', closeAllPanels);
 
   const paramFlow = new URLSearchParams(window.location.search).get('flow');
+  const rpcMethod = new URLSearchParams(window.location.search).get('rpcMethod');
 
   chrome.runtime.sendMessage({ type: 'GET_LOCK_STATE' }, async (resp) => {
     if (resp?.locked && !paramFlow) { showUnlockScreen(''); return; }
@@ -1532,7 +1541,21 @@ window.addEventListener('DOMContentLoaded', async () => {
       showScreen('screen-import');
     } else if (await walletExists()) {
       const { address } = await getPublicInfo();
-      showUnlockScreen(address || '');
+      
+      // If we are already unlocked AND this is an RPC call, process it directly!
+      if (rpcMethod && !resp?.locked) {
+        const session = await chrome.storage.session.get(['activeSecretKey']);
+        if (!session.activeSecretKey) {
+          // Edge case: extension reloaded but session kept locked=false without keys.
+          showUnlockScreen(address || '');
+        } else {
+          await processRpc();
+        }
+      } else if (resp?.locked) {
+        showUnlockScreen(address || '');
+      } else {
+        await enterMain();
+      }
     } else {
       showScreen('screen-welcome');
     }
@@ -1595,8 +1618,90 @@ async function unlockWallet() {
   try {
     await loadWalletData(pw);
     pingActivity();
-    await enterMain();
+    
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('rpcMethod')) {
+      await processRpc();
+    } else {
+      await enterMain();
+    }
   } catch {
     if (errEl) errEl.classList.remove('hidden');
   }
+}
+
+async function processRpc() {
+  const params = new URLSearchParams(window.location.search);
+  const method = params.get('rpcMethod');
+  const args = JSON.parse(decodeURIComponent(params.get('rpcParams') || '[]'));
+  const rpcId = params.get('rpcId');
+  
+  try {
+    const session = await chrome.storage.session.get(['activeSecretKey', 'activeAddress']);
+    if (!session.activeSecretKey) throw new Error("Secret key not decrypted");
+    
+    showRpcScreen(method, args, rpcId, session);
+  } catch (err) {
+    chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: err.message }, () => {
+      window.close();
+    });
+  }
+}
+
+function showRpcScreen(method, args, rpcId, session) {
+  let s = document.getElementById('screen-rpc');
+  if (!s) {
+    s = document.createElement('div');
+    s.id = 'screen-rpc'; s.className = 'screen';
+    document.body.appendChild(s);
+  }
+  
+  if (method === 'requestAccounts') {
+    s.innerHTML = `
+      <div class="card-page" style="text-align:center">
+        <h2 style="margin-top:20px;">Connect to dApp</h2>
+        <p class="subtitle" style="margin-bottom:24px;">A website is requesting to see your address.</p>
+        <div style="background:var(--bg-lighter);padding:16px;border-radius:12px;margin-bottom:24px;">
+          <p style="font-family:var(--mono);font-size:0.85rem;color:var(--text);word-break:break-all;">
+            ${session.activeAddress}
+          </p>
+        </div>
+        <button id="btn-rpc-approve" class="btn btn-primary full-width">Connect</button>
+        <button id="btn-rpc-reject" class="btn btn-ghost full-width" style="margin-top:10px;">Reject</button>
+      </div>`;
+      
+    document.getElementById('btn-rpc-approve').addEventListener('click', () => {
+      chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: [session.activeAddress] }, () => window.close());
+    });
+  } else if (method === 'signMessage') {
+    const message = args[0];
+    s.innerHTML = `
+      <div class="card-page" style="text-align:center">
+        <h2 style="margin-top:20px;">Signature Request</h2>
+        <p class="subtitle" style="margin-bottom:24px;">A website is requesting you to sign this message with Falcon-512.</p>
+        <div style="background:var(--bg-lighter);padding:16px;border-radius:12px;margin-bottom:24px;text-align:left;border-left: 3px solid var(--primary);">
+          <p style="font-family:var(--mono);font-size:0.85rem;color:var(--text);white-space:pre-wrap;word-break:break-word;">${escapeHtml(message)}</p>
+        </div>
+        <button id="btn-rpc-approve" class="btn btn-primary full-width">Sign Message</button>
+        <button id="btn-rpc-reject" class="btn btn-ghost full-width" style="margin-top:10px;">Reject</button>
+      </div>`;
+      
+    document.getElementById('btn-rpc-approve').addEventListener('click', () => {
+      try {
+        const sigHex = wasm.sign_message(message, session.activeSecretKey);
+        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: sigHex }, () => window.close());
+      } catch (err) {
+        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: err.message }, () => window.close());
+      }
+    });
+  } else {
+    chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: "Unsupported method" }, () => window.close());
+    return;
+  }
+  
+  document.getElementById('btn-rpc-reject').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: "User rejected the request." }, () => window.close());
+  });
+  
+  showScreen('screen-rpc');
 }
