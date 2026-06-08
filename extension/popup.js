@@ -434,6 +434,7 @@ async function loadWalletData(password) {
   // Expose decrypted keys to background.js for Web3 Provider signing
   await chrome.storage.session.set({ 
     activeAddress: result.address,
+    activePublicKey: result.pkHex,
     activeSecretKey: result.skHex
   });
   
@@ -1689,7 +1690,7 @@ function showRpcScreen(method, args, rpcId, session) {
     document.getElementById('btn-rpc-approve').addEventListener('click', () => {
       try {
         const sigHex = wasm.sign_message(message, session.activeSecretKey);
-        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: sigHex }, () => window.close());
+        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: { signatureHex: sigHex, publicKeyHex: session.activePublicKey } }, () => window.close());
       } catch (err) {
         chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: err.message }, () => window.close());
       }
