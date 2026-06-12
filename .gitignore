@@ -8,3 +8,4 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
+*.json

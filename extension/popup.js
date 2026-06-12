@@ -435,7 +435,8 @@ async function loadWalletData(password) {
   await chrome.storage.session.set({ 
     activeAddress: result.address,
     activePublicKey: result.pkHex,
-    activeSecretKey: result.skHex
+    activeSecretKey: result.skHex,
+    sessionPassword: password
   });
   
   return result;
@@ -873,7 +874,12 @@ function copyPrivateKey() {
 function lockWallet() {
   state.secretKey = null; state.publicKey = null;
   state.address = null; state.balance = 0; state.txHistory = [];
-  showScreen('screen-welcome'); toast('Locked');
+  state.sessionPassword = null;
+  chrome.storage.session.set({ locked: true }, () => {
+    chrome.storage.session.remove(['activeAddress', 'activeSecretKey', 'sessionPassword'], () => {
+      window.location.reload();
+    });
+  });
 }
 
 function deleteWallet() {
@@ -1062,7 +1068,9 @@ async function doAddAccount() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="btn-spinner"></span> Importing…'; }
 
   try {
-    const result = wasm.import_wallet(phrase, '', 0);
+    const idxEl = document.getElementById('add-account-mnemonic-index');
+    const deriveIdx = idxEl && idxEl.value ? parseInt(idxEl.value) : 0;
+    const result = wasm.import_wallet(phrase, '', deriveIdx);
 
     // Duplicate check: reject if address matches any existing account
     const accounts = await getAccounts();
@@ -1534,31 +1542,40 @@ window.addEventListener('DOMContentLoaded', async () => {
   const rpcMethod = new URLSearchParams(window.location.search).get('rpcMethod');
 
   chrome.runtime.sendMessage({ type: 'GET_LOCK_STATE' }, async (resp) => {
-    if (resp?.locked && !paramFlow) { showUnlockScreen(''); return; }
-
     if (paramFlow === 'create') {
       showScreen('screen-create-warn');
+      return;
     } else if (paramFlow === 'import') {
       showScreen('screen-import');
-    } else if (await walletExists()) {
-      const { address } = await getPublicInfo();
-      
-      // If we are already unlocked AND this is an RPC call, process it directly!
-      if (rpcMethod && !resp?.locked) {
-        const session = await chrome.storage.session.get(['activeSecretKey']);
-        if (!session.activeSecretKey) {
-          // Edge case: extension reloaded but session kept locked=false without keys.
-          showUnlockScreen(address || '');
-        } else {
-          await processRpc();
-        }
-      } else if (resp?.locked) {
-        showUnlockScreen(address || '');
-      } else {
-        await enterMain();
-      }
-    } else {
+      return;
+    }
+
+    if (!await walletExists()) {
       showScreen('screen-welcome');
+      return;
+    }
+
+    const { address } = await getPublicInfo();
+
+    // MV3 service workers are ephemeral — chrome.storage.session can be wiped
+    // by Chrome waking the SW fresh, even without the autolock alarm firing.
+    // So treat "no activeSecretKey in session" the same as "locked", regardless
+    // of what the locked flag says.
+    const session = await chrome.storage.session.get(['activeSecretKey', 'sessionPassword']);
+    const hasKeys = !!session.activeSecretKey;
+
+    if (resp?.locked || !hasKeys) {
+      showUnlockScreen(address || '');
+      return;
+    }
+
+    // Keys present in session — restore to in-memory state
+    state.sessionPassword = session.sessionPassword || null;
+
+    if (rpcMethod) {
+      await processRpc();
+    } else {
+      await enterMain();
     }
   });
 });

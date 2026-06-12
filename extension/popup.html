@@ -450,6 +450,11 @@
           <label>Recovery Phrase (24 words)</label>
           <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24" style="font-family:var(--mono);font-size:0.82rem;"></textarea>
         </div>
+        <div class="form-group">
+          <label>Derivation Index</label>
+          <input id="add-account-mnemonic-index" type="number" placeholder="0" value="0" min="0">
+          <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Defaults to 0. Change this to import a different account from the phrase.</p>
+        </div>
         <div id="add-account-error" class="error-msg hidden"></div>
         <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import Account</button>
       </div>

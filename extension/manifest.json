@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Quanta Wallet",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Post-Quantum PQC wallet for QuantaChain (QUA) — Falcon-512 signatures, NIST PQC standard. Multi-account HD derivation.",
 
   "action": {

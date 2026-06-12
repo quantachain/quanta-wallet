@@ -28,7 +28,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'autolock') {
     // Signal popup to lock (popup reads this on open)
     chrome.storage.session.set({ locked: true });
-    chrome.storage.session.remove(['activeAddress', 'activeSecretKey']);
+    chrome.storage.session.remove(['activeAddress', 'activeSecretKey', 'sessionPassword']);
     console.log('[Quanta Background] Auto-locked after inactivity');
   }
 });
