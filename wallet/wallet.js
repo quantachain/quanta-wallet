@@ -472,8 +472,10 @@ async function refreshBalance() {
     state.balance = data.balance ?? data.amount ?? 0;
     document.getElementById('balance-val').textContent =
       (state.balance / MICROUNITS).toFixed(6);
-    document.getElementById('asset-bal-val').textContent =
-      (state.balance / MICROUNITS).toFixed(6);
+    if (document.getElementById('asset-bal-val')) {
+      document.getElementById('asset-bal-val').textContent =
+        (state.balance / MICROUNITS).toFixed(6);
+    }
   } catch (e) {
     console.warn('[Quanta] Balance fetch failed:', e.message);
     document.getElementById('balance-val').textContent = 'Node offline';
@@ -943,8 +945,13 @@ function renderAccountList() {
       <div class="acc-avatar" style="background:hsl(${(acc.index * 67 + 180) % 360},70%,45%)">
         ${escapeHtml(acc.name.slice(0, 1))}${acc.index + 1}
       </div>
-      <div class="acc-info">
-        <div class="acc-name">${escapeHtml(acc.name)}</div>
+      <div class="acc-info" style="flex:1">
+        <div class="acc-name" style="display:flex;align-items:center;justify-content:space-between">
+          <span>${escapeHtml(acc.name)}</span>
+          <button class="icon-btn" style="padding:2px;min-height:unset;width:20px;height:20px" onclick="editAccountName(event, ${acc.index})" title="Edit Name">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
         <div class="acc-addr">${acc.address ? acc.address.slice(0,10)+'\u2026'+acc.address.slice(-6) : '\u2014'}</div>
       </div>
       ${acc.index === state.activeAccountIndex
@@ -952,6 +959,37 @@ function renderAccountList() {
         : ''}
     </div>`).join('');
 }
+
+window.editAccountName = function(e, idx) {
+  e.stopPropagation();
+  const acc = state.accounts.find(a => a.index === idx);
+  if (!acc) return;
+  document.getElementById('rename-input').value = acc.name;
+  document.getElementById('rename-index').value = idx;
+  showPanel('rename-panel');
+  document.getElementById('rename-input').focus();
+};
+
+window.saveAccountName = function() {
+  const newName = document.getElementById('rename-input').value;
+  const idx = parseInt(document.getElementById('rename-index').value);
+  if (newName && newName.trim() && idx >= 0) {
+    const acc = state.accounts.find(a => a.index === idx);
+    if (acc) {
+      acc.name = newName.trim();
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const stored = JSON.parse(raw);
+        stored.accounts = state.accounts;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+      }
+      closePanel('rename-panel');
+      renderAccountList();
+      updateMainUI();
+      toast('Account renamed');
+    }
+  }
+};
 
 function toggleAddAccountForm() {
   const form = document.getElementById('add-account-form');

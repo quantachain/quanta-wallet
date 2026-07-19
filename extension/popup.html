@@ -499,6 +499,22 @@
     </div>
   </div>
 
+  <!-- RENAME PANEL -->
+  <div id="rename-panel" class="side-panel bottom-up" style="z-index: 105;">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <h3>Rename Account</h3><button class="close-panel" data-panel="rename-panel">✕</button>
+    </div>
+    <div class="panel-body">
+      <div class="form-group">
+        <label>Account Name</label>
+        <input id="rename-input" type="text" placeholder="e.g. Savings">
+      </div>
+      <input type="hidden" id="rename-index" value="-1">
+      <button id="btn-save-rename" class="btn btn-primary full-width" style="margin-top:12px;">Save</button>
+    </div>
+  </div>
+
   <div id="overlay" class="overlay hidden"></div>
   <div id="toast" class="toast hidden"></div>
 

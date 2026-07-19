@@ -449,7 +449,7 @@ async function walletExists() {
 
 async function getPublicInfo() {
   const s = await storageGet(STORAGE_KEY);
-  return { address: s?.address || null, pkHex: s?.pkHex || null };
+  return { address: s?.address || null, pkHex: s?.pkHex || null, name: s?.name || null };
 }
 
 // ── Main wallet ───────────────────────────────────────────────────────────────
@@ -931,8 +931,8 @@ async function renderAccountsList() {
 
   // Always read Account 1's address from storage — NOT state.address,
   // which may have already been updated to a different account's address.
-  const { address: primaryAddress, pkHex: primaryPk } = await getPublicInfo();
-  const primary = { name: 'Account 1', address: primaryAddress || '0x...', primary: true };
+  const { address: primaryAddress, pkHex: primaryPk, name: primaryName } = await getPublicInfo();
+  const primary = { name: primaryName || 'Account 1', address: primaryAddress || '0x...', primary: true };
   const display = [primary, ...accounts];
 
   container.innerHTML = display.map((acc, i) => {
@@ -942,9 +942,14 @@ async function renderAccountsList() {
     return `
       <div class="account-card" style="margin-bottom:8px;${isActive ? 'border:1px solid var(--cyan);background:rgba(0,212,255,0.04);' : ''}">
         <div class="account-details" style="cursor:pointer;flex:1;" data-switch-idx="${i}">
-          <div class="account-name" style="display:flex;align-items:center;gap:6px;">
-            ${escapeHtml(acc.name || 'Account ' + (i + 1))}
-            ${isActive ? '<span style="font-size:0.7rem;color:var(--cyan);font-weight:600;">Active</span>' : ''}
+          <div class="account-name" style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span>${escapeHtml(acc.name || 'Account ' + (i + 1))}</span>
+              ${isActive ? '<span style="font-size:0.7rem;color:var(--cyan);font-weight:600;">Active</span>' : ''}
+            </div>
+            <button class="icon-btn" data-edit-name="${i}" title="Edit Name" style="padding:2px;width:20px;height:20px;margin-right:8px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
           </div>
           <div class="account-addr-full" style="font-size:0.72rem;color:var(--text-muted);font-family:var(--mono);">${escapeHtml(short)}</div>
         </div>
@@ -965,6 +970,72 @@ async function renderAccountsList() {
       e.stopPropagation();
       navigator.clipboard.writeText(el.dataset.copyAddr).then(() => toast('Copied'));
     }));
+  container.querySelectorAll('[data-edit-name]').forEach(el =>
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const idx = parseInt(el.dataset.editName);
+      const acc = display[idx];
+      const nameDiv = el.closest('.account-name');
+      
+      if (nameDiv) {
+        const currentName = acc.name || 'Account ' + (idx + 1);
+        
+        // Replace inner HTML with an inline input and save button
+        nameDiv.innerHTML = `
+          <div style="display:flex;align-items:center;gap:4px;width:100%;">
+            <input type="text" id="inline-rename-${idx}" value="" style="flex:1; height: 22px; padding: 0 6px; font-size: 0.75rem; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--cyan); border-radius: 4px; outline: none; margin-right: 4px;" />
+            <button class="icon-btn" id="inline-save-${idx}" title="Save" style="padding:2px;width:22px;height:22px;background:var(--cyan);color:#0b0e14;border-radius:4px;display:flex;align-items:center;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+          </div>
+        `;
+        
+        const inputField = document.getElementById(`inline-rename-${idx}`);
+        inputField.value = currentName; // Set value this way to handle quotes safely
+        inputField.focus();
+        inputField.select();
+        
+        inputField.addEventListener('click', ev => ev.stopPropagation());
+        
+        const saveBtn = document.getElementById(`inline-save-${idx}`);
+        saveBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const newName = inputField.value.trim();
+          if (newName) {
+            try {
+              if (idx === 0) {
+                const s = await storageGet('quanta_wallet_v1'); // STORAGE_KEY
+                if (s) {
+                  s.name = newName;
+                  await storageSet('quanta_wallet_v1', s);
+                }
+              } else {
+                const accounts = await storageGet('quanta_accounts_v1'); // ACCOUNTS_KEY
+                if (accounts && accounts[idx - 1]) {
+                  accounts[idx - 1].name = newName;
+                  await storageSet('quanta_accounts_v1', accounts);
+                }
+              }
+            } catch(e) {
+              console.error(e);
+            }
+          }
+          renderAccountsList();
+        });
+        
+        inputField.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            saveBtn.click();
+          } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            renderAccountsList();
+          }
+        });
+      }
+    })
+  );
 
   const addBtn = document.getElementById('btn-add-account');
   if (addBtn) addBtn.style.display = display.length >= MAX_ACCOUNTS ? 'none' : '';
@@ -1526,6 +1597,31 @@ window.addEventListener('DOMContentLoaded', async () => {
   b('btn-receive-copy', copyAddress);
   // TimeLock toggle on initial panel load
   document.getElementById('send-timelock-toggle')?.addEventListener('change', handleTimelockToggle);
+  
+  b('btn-save-rename', async () => {
+    const newName = document.getElementById('rename-input').value;
+    const idx = parseInt(document.getElementById('rename-index').value);
+    if (newName && newName.trim() && idx >= 0) {
+      const trimmed = newName.trim();
+      if (idx === 0) {
+        const s = await storageGet(STORAGE_KEY);
+        if (s) {
+          s.name = trimmed;
+          await storageSet(STORAGE_KEY, s);
+        }
+      } else {
+        const storedAccs = await getAccounts();
+        if (storedAccs[idx - 1]) {
+          storedAccs[idx - 1].name = trimmed;
+          await storageSet(ACCOUNTS_KEY, storedAccs);
+        }
+      }
+      closePanel('rename-panel');
+      renderAccountList();
+      updateMainUI();
+      toast('Account renamed');
+    }
+  });
 
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', (e) => switchTab(e.target.dataset.target, e.target));

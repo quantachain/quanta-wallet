@@ -421,6 +421,22 @@
     </div>
   </div>
 
+  <!-- PANEL: Rename -->
+  <div id="rename-panel" class="side-panel" role="dialog" aria-label="Rename Account">
+    <div class="panel-header">
+      <h3>Rename Account</h3>
+      <button class="close-panel" onclick="closePanel('rename-panel')">&#x2715;</button>
+    </div>
+    <div class="panel-body">
+      <div class="form-group">
+        <label>Account Name</label>
+        <input id="rename-input" type="text" placeholder="e.g. Savings">
+      </div>
+      <input type="hidden" id="rename-index" value="-1">
+      <button class="btn btn-primary full-width" onclick="saveAccountName()">Save Name</button>
+    </div>
+  </div>
+
   <!-- OVERLAY -->
   <div id="overlay" class="overlay hidden" onclick="closeAllPanels()"></div>
 
