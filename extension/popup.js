@@ -635,7 +635,159 @@ function renderHistory() {
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Builds the binary payload matching node's Transaction::get_signing_bytes()
+ * and the JSON payload for submission.
+ */
+function buildTransactionPayload(txData, pkBytesHex, network) {
+  const enc = new TextEncoder();
+  const senderBytes = enc.encode(txData.sender);
+  const recipBytes  = enc.encode(txData.recipient || '');
+  const pkBytes = new Uint8Array((pkBytesHex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16)));
+  const payloadBytes = txData.payload ? new Uint8Array(txData.payload) : new Uint8Array(0);
 
+  function writeU64LE(arr, val, offset) {
+    const dv = new DataView(arr.buffer, arr.byteOffset, arr.byteLength);
+    dv.setBigUint64(offset, BigInt(val), true);
+  }
+
+  // Compute type specific bytes
+  let typeLen = 1;
+  let typeBuf = null;
+
+  const txType = txData.tx_type || 'Transfer';
+  
+  if (txType === 'Transfer') {
+    typeBuf = new Uint8Array([0]);
+  } else if (txType === 'TimeLockTransfer') {
+    typeLen += 8;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 1;
+    writeU64LE(typeBuf, txData.unlock_height || 0, 1);
+  } else if (txType === 'MultiSigTransfer') {
+    typeLen += 1;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 2;
+    typeBuf[1] = txData.signers_required || 1;
+  } else if (txType === 'Stake') {
+    const pubkey = txData.validator_pubkey ? new Uint8Array(txData.validator_pubkey) : new Uint8Array(0);
+    typeLen += pubkey.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 3;
+    typeBuf.set(pubkey, 1);
+  } else if (txType === 'Unstake') {
+    typeBuf = new Uint8Array([4]);
+  } else if (txType === 'Delegate') {
+    const valBytes = enc.encode(txData.validator_address || '');
+    typeLen += valBytes.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 8;
+    typeBuf.set(valBytes, 1);
+  } else if (txType === 'Undelegate') {
+    const valBytes = enc.encode(txData.validator_address || '');
+    typeLen += valBytes.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 9;
+    typeBuf.set(valBytes, 1);
+  } else if (txType === 'ContractDeploy') {
+    const args = txData.init_args ? new Uint8Array(txData.init_args) : new Uint8Array(0);
+    typeLen += 1 + args.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 5;
+    typeBuf[1] = txData.template_id || 0;
+    typeBuf.set(args, 2);
+  } else if (txType === 'ContractCall') {
+    const contractBytes = enc.encode(txData.contract_address || '');
+    const methodBytes = enc.encode(txData.method || '');
+    const args = txData.call_args ? new Uint8Array(txData.call_args) : new Uint8Array(0);
+    typeLen += contractBytes.length + methodBytes.length + args.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 6;
+    let o = 1;
+    typeBuf.set(contractBytes, o); o += contractBytes.length;
+    typeBuf.set(methodBytes, o); o += methodBytes.length;
+    typeBuf.set(args, o);
+  } else {
+    throw new Error('Unsupported tx_type: ' + txType);
+  }
+
+  const signingBuf = new Uint8Array(
+    senderBytes.length +
+    recipBytes.length +
+    8 + 8 + 8 + 8 + 8 +   // amount, timestamp, fee, nonce, lock_time
+    pkBytes.length +
+    1 + 4 + 4 +           // sig_scheme, network_id, payload_len
+    payloadBytes.length +
+    typeBuf.length
+  );
+
+  let off = 0;
+  signingBuf.set(senderBytes, off); off += senderBytes.length;
+  signingBuf.set(recipBytes,  off); off += recipBytes.length;
+  writeU64LE(signingBuf, txData.amount || 0,  off); off += 8;
+  writeU64LE(signingBuf, txData.timestamp || 0, off); off += 8; // I64 is same bits
+  writeU64LE(signingBuf, txData.fee || 0,     off); off += 8;
+  writeU64LE(signingBuf, txData.nonce || 0,     off); off += 8;
+  writeU64LE(signingBuf, txData.lock_time || 0,  off); off += 8;
+  signingBuf.set(pkBytes, off); off += pkBytes.length;
+  signingBuf[off++] = 0;  // sig_scheme = Falcon512
+  
+  const networkId = network === 'mainnet' ? 1 : 0;
+  signingBuf[off++] = networkId & 0xff;
+  signingBuf[off++] = (networkId >> 8) & 0xff;
+  signingBuf[off++] = (networkId >> 16) & 0xff;
+  signingBuf[off++] = (networkId >> 24) & 0xff;
+  
+  const pLen = payloadBytes.length;
+  signingBuf[off++] = pLen & 0xff;
+  signingBuf[off++] = (pLen >> 8) & 0xff;
+  signingBuf[off++] = (pLen >> 16) & 0xff;
+  signingBuf[off++] = (pLen >> 24) & 0xff;
+  if (pLen > 0) {
+    signingBuf.set(payloadBytes, off); off += pLen;
+  }
+  
+  signingBuf.set(typeBuf, off);
+  const signingHex = Array.from(signingBuf).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  // Return the hex for signing and the JSON template
+  const txJson = {
+    sender: txData.sender,
+    recipient: txData.recipient || '',
+    amount: txData.amount || 0,
+    fee: txData.fee || 0,
+    nonce: txData.nonce || 0,
+    timestamp: txData.timestamp || 0,
+    signature: [],
+    public_key: Array.from(pkBytes),
+    lock_time: txData.lock_time || 0,
+    tx_type: txData.tx_type || 'Transfer',
+    sig_scheme: 'Falcon512',
+    network_id: networkId,
+    payload: Array.from(payloadBytes)
+  };
+
+  // Adjust tx_type for Serde's internally tagged / externally tagged enums
+  if (txType !== 'Transfer' && txType !== 'Unstake') {
+    const typeObj = {};
+    if (txType === 'Delegate' || txType === 'Undelegate') {
+      typeObj[txType] = { validator_address: txData.validator_address };
+    } else if (txType === 'TimeLockTransfer') {
+      typeObj[txType] = { unlock_height: txData.unlock_height };
+    } else if (txType === 'MultiSigTransfer') {
+      typeObj[txType] = { signers_required: txData.signers_required };
+    } else if (txType === 'Stake') {
+      typeObj[txType] = { validator_pubkey: Array.from(txData.validator_pubkey) };
+    } else if (txType === 'ContractDeploy') {
+      typeObj[txType] = { template_id: txData.template_id, init_args: Array.from(txData.init_args) };
+    } else if (txType === 'ContractCall') {
+      typeObj[txType] = { contract_address: txData.contract_address, method: txData.method, call_args: Array.from(txData.call_args) };
+    }
+    txJson.tx_type = typeObj;
+  }
+
+  return { signingHex, txJson };
+}
 async function sendTransaction() {
   const toEl = document.getElementById('send-to');
   const amEl = document.getElementById('send-amount');
@@ -717,45 +869,24 @@ async function sendTransaction() {
     const feeMicro = isTimeLock
       ? Math.max(5000, Math.round(fee * MICROUNITS))
       : Math.round(fee * MICROUNITS);
-    const tx = {
-      sender: state.address, recipient: to,
+    const txData = {
+      tx_type: isTimeLock ? 'TimeLockTransfer' : 'Transfer',
+      unlock_height: isTimeLock ? unlockHeight : undefined,
+      sender: state.address,
+      recipient: to,
       amount: Math.round(amount * MICROUNITS),
-      fee: feeMicro, nonce: fetchedNonce, timestamp,
-      lock_time: 0,
-      tx_type: isTimeLock ? { TimeLockTransfer: { unlock_height: unlockHeight } } : 'Transfer',
-      sig_scheme: 'Falcon512', network_id: networkId,
+      timestamp,
+      fee: feeMicro,
+      nonce: fetchedNonce,
+      lock_time: 0
     };
-    const encoder = new TextEncoder();
-    function toLeBytes(num) {
-      const arr = new Uint8Array(8);
-      new DataView(arr.buffer).setBigUint64(0, BigInt(num), true);
-      return Array.from(arr);
-    }
-    const pkBytes = Array.from(new Uint8Array((state.publicKey.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
-    const payloadBytes = [
-      ...Array.from(encoder.encode(tx.sender)),
-      ...Array.from(encoder.encode(tx.recipient)),
-      ...toLeBytes(tx.amount),
-      ...toLeBytes(tx.timestamp),
-      ...toLeBytes(feeMicro),
-      ...toLeBytes(tx.nonce),
-      ...toLeBytes(tx.lock_time),
-      ...pkBytes,
-      0, // sig_scheme: Falcon512 = 0
-      networkId & 0xff, (networkId >> 8) & 0xff, (networkId >> 16) & 0xff, (networkId >> 24) & 0xff,
-      0, 0, 0, 0, // payload.len() as u32 = 0
-    ];
-    if (isTimeLock) {
-      payloadBytes.push(1); // tx_type byte: TimeLockTransfer
-      payloadBytes.push(...toLeBytes(unlockHeight));
-    } else {
-      payloadBytes.push(0); // tx_type byte: Transfer
-    }
-    const hexPayload = payloadBytes.map(b => b.toString(16).padStart(2, '0')).join('');
-    const hexSig = wasm.sign_transaction(hexPayload, walletSkHex);
+
+    const { signingHex, txJson: tx } = buildTransactionPayload(txData, state.publicKey, state.settings.network);
+    
+    // Sign payload
+    const hexSig = wasm.sign_transaction(signingHex, walletSkHex);
     const hexToBytes = (hex) => Array.from(new Uint8Array((hex.match(/.{1,2}/g) || []).map(b => parseInt(b, 16))));
     tx.signature = hexToBytes(hexSig);
-    tx.public_key = hexToBytes(state.publicKey);
 
     const resp = await fetch(rpcUrl('/api/transactions/submit'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1804,6 +1935,60 @@ function showRpcScreen(method, args, rpcId, session) {
       try {
         const sigHex = wasm.sign_message(message, session.activeSecretKey);
         chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: { signatureHex: sigHex, publicKeyHex: session.activePublicKey } }, () => window.close());
+      } catch (err) {
+        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: err.message }, () => window.close());
+      }
+    });
+  } else if (method === 'signTransaction') {
+    const tx = args[0];
+    
+    let title = "Approve Transaction";
+    let details = `To: ${tx.recipient || 'N/A'}\nAmount: ${tx.amount || 0} QUA\nFee: ${tx.fee || 0} QUA`;
+    let typeName = typeof tx.tx_type === 'object' ? Object.keys(tx.tx_type)[0] : tx.tx_type;
+    
+    if (typeName === 'ContractDeploy') {
+      const tId = tx.tx_type.ContractDeploy.template_id;
+      if (tId === 2) title = "Deploy Agent Job";
+      else if (tId === 3) title = "Deploy Agent Bid";
+      else if (tId === 5) title = "Register AI Agent";
+      else if (tId === 6) title = "Initialize Agent Reputation";
+      details = `Template ID: ${tId}\nFee: ${tx.fee || 0} QUA`;
+    } else if (typeName === 'ContractCall') {
+      const callMethod = tx.tx_type.ContractCall.method;
+      if (callMethod === 'submit_bid') title = "Submit Agent Bid";
+      else if (callMethod === 'select_winner') title = "Select Winning Agent";
+      else if (callMethod === 'rate') title = "Rate AI Agent";
+      details = `Contract: ${tx.tx_type.ContractCall.contract_address.substring(0, 12)}...\nMethod: ${callMethod}\nFee: ${tx.fee || 0} QUA`;
+    }
+    
+    s.innerHTML = `
+      <div class="card-page" style="text-align:center">
+        <h2 style="margin-top:20px;">${title}</h2>
+        <p class="subtitle" style="margin-bottom:24px;">A website is requesting to sign a transaction.</p>
+        <div style="background:var(--bg-lighter);padding:16px;border-radius:12px;margin-bottom:24px;text-align:left;border-left: 3px solid var(--accent);">
+          <p style="font-family:var(--mono);font-size:0.85rem;color:var(--text);white-space:pre-wrap;">${escapeHtml(details)}</p>
+        </div>
+        <button id="btn-rpc-approve" class="btn btn-primary full-width">Approve & Sign</button>
+        <button id="btn-rpc-reject" class="btn btn-ghost full-width" style="margin-top:10px;">Reject</button>
+      </div>`;
+      
+    document.getElementById('btn-rpc-approve').addEventListener('click', async () => {
+      try {
+        const btn = document.getElementById('btn-rpc-approve');
+        btn.innerHTML = 'Signing...';
+        btn.disabled = true;
+        
+        const network = await new Promise(res => chrome.storage.local.get(['network'], r => res(r.network || 'testnet')));
+        
+        // buildTransaction logic
+        tx.sender = session.activeAddress; // Enforce sender
+        const { signingHex, txJson } = buildTransaction(tx, fromHex(session.activePublicKey), network);
+        const signedMsgHex = wasm.sign_transaction(signingHex, session.activeSecretKey);
+        
+        const sigHex = signedMsgHex.substring(0, signedMsgHex.length - 64);
+        txJson.signature = Array.from(fromHex(sigHex));
+        
+        chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, result: txJson }, () => window.close());
       } catch (err) {
         chrome.runtime.sendMessage({ type: 'RPC_RESULT', rpcId, error: err.message }, () => window.close());
       }

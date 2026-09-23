@@ -7,8 +7,9 @@
   <title>Quanta Wallet</title>
   <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'wasm-unsafe-eval'; object-src 'self'">
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Syne:wght@700;800&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <style>
@@ -42,7 +43,11 @@
 
   <div id="screen-create-warn" class="screen">
     <div class="card-page">
-      <button class="back-btn" data-target="screen-welcome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> Back</button>
+      <button class="back-btn" data-target="screen-welcome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5" />
+          <path d="M12 19l-7-7 7-7" />
+        </svg> Back</button>
       <h2>Before You Continue</h2>
       <p class="subtitle">Your 24-word phrase is the ONLY way to recover your wallet.</p>
       <div class="warn-list">
@@ -54,7 +59,12 @@
         <input type="checkbox" id="chk-understand">
         <label for="chk-understand">I understand losing my mnemonic means losing my funds</label>
       </div>
-      <button id="btn-generate-wallet" class="btn btn-primary" disabled>Generate My Wallet <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+      <button id="btn-generate-wallet" class="btn btn-primary" disabled>Generate My Wallet <svg width="18" height="18"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M5 12h14" />
+          <path d="M12 5l7 7-7 7" />
+        </svg></button>
     </div>
   </div>
 
@@ -68,7 +78,12 @@
         <button id="btn-toggle-mnemonic" class="btn btn-ghost btn-sm">Toggle Blur</button>
       </div>
       <div class="warn-banner">Shown once only. Write it down now.</div>
-      <button id="btn-written-down" class="btn btn-primary">I've Written It Down <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+      <button id="btn-written-down" class="btn btn-primary">I've Written It Down <svg width="18" height="18"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M5 12h14" />
+          <path d="M12 5l7 7-7 7" />
+        </svg></button>
     </div>
   </div>
 
@@ -78,7 +93,12 @@
       <p class="subtitle">Select the correct word for each position to verify your backup.</p>
       <div id="confirm-inputs" class="confirm-grid"></div>
       <div id="confirm-error" class="error-msg hidden">Incorrect words. Check your mnemonic.</div>
-      <button id="btn-verify-continue" class="btn btn-primary">Verify & Continue <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+      <button id="btn-verify-continue" class="btn btn-primary">Verify & Continue <svg width="18" height="18"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M5 12h14" />
+          <path d="M12 5l7 7-7 7" />
+        </svg></button>
     </div>
   </div>
 
@@ -111,13 +131,20 @@
 
   <div id="screen-import" class="screen">
     <div class="card-page">
-      <button class="back-btn" data-target="screen-welcome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg> Back</button>
+      <button class="back-btn" data-target="screen-welcome"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5" />
+          <path d="M12 19l-7-7 7-7" />
+        </svg> Back</button>
       <h2>Import Wallet</h2>
 
       <!-- Mode tabs -->
-      <div style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-        <button id="import-tab-mnemonic" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Mnemonic</button>
-        <button id="import-tab-privkey" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;">Private Key</button>
+      <div
+        style="display:flex;gap:0;margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <button id="import-tab-mnemonic" class="btn btn-ghost"
+          style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Mnemonic</button>
+        <button id="import-tab-privkey" class="btn btn-ghost"
+          style="flex:1;border-radius:0;border:none;font-size:0.82rem;padding:8px 4px;">Private Key</button>
       </div>
 
       <!-- Mnemonic section -->
@@ -133,22 +160,34 @@
           <input id="import-password" type="password" placeholder="Choose a password">
         </div>
         <div id="import-error" class="error-msg hidden"></div>
-        <button id="btn-import-go" class="btn btn-primary" disabled>Import Wallet <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+        <button id="btn-import-go" class="btn btn-primary" disabled>Import Wallet <svg width="18" height="18"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="M12 5l7 7-7 7" />
+          </svg></button>
       </div>
 
       <!-- Private Key section (accepts combined sk|pk format from Export Keys panel) -->
       <div id="import-section-privkey" style="display:none;">
-        <p class="subtitle" style="font-size:0.8rem;margin-bottom:12px;">Paste the <strong>combined key</strong> exported from the <strong>Export Keys</strong> panel (sk|pk format).</p>
+        <p class="subtitle" style="font-size:0.8rem;margin-bottom:12px;">Paste the <strong>combined key</strong>
+          exported from the <strong>Export Keys</strong> panel (sk|pk format).</p>
         <div class="form-group">
           <label>Combined Key (sk|pk)</label>
-          <textarea id="import-sk-hex" rows="4" placeholder="Paste your exported combined key here…" style="font-family:var(--mono);font-size:0.72rem;"></textarea>
+          <textarea id="import-sk-hex" rows="4" placeholder="Paste your exported combined key here…"
+            style="font-family:var(--mono);font-size:0.72rem;"></textarea>
         </div>
         <div class="form-group">
           <label>Wallet Password</label>
           <input id="import-pk-password" type="password" placeholder="Choose a password">
         </div>
         <div id="import-pk-error" class="error-msg hidden"></div>
-        <button id="btn-import-pk-go" class="btn btn-primary">Import from Key <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+        <button id="btn-import-pk-go" class="btn btn-primary">Import from Key <svg width="18" height="18"
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="M12 5l7 7-7 7" />
+          </svg></button>
       </div>
     </div>
   </div>
@@ -248,10 +287,7 @@
       </div>
     </div>
 
-    <div class="tab-bar">
-      <button id="tab-btn-assets" class="tab active" data-target="tab-assets">Assets</button>
-      <button id="tab-btn-history" class="tab" data-target="tab-history">Activity</button>
-    </div>
+    <!-- Tabs moved to bottom nav -->
 
     <div class="main-scroll-area">
       <div id="tab-assets" class="tab-content active">
@@ -262,22 +298,84 @@
           <div class="asset-info">
             <div style="display:flex;align-items:center;gap:6px;">
               <span class="asset-name">Quanta</span>
-              <span style="font-size:0.65rem;font-weight:700;background:rgba(196,237,95,0.12);color:var(--accent);padding:2px 7px;border-radius:99px;border:1px solid rgba(196,237,95,0.2);">Native</span>
+              <span
+                style="font-size:0.65rem;font-weight:700;background:rgba(196,237,95,0.12);color:var(--accent);padding:2px 7px;border-radius:99px;border:1px solid rgba(196,237,95,0.2);">Native</span>
             </div>
             <span class="asset-ticker">QuantaChain · QUA</span>
           </div>
           <div style="text-align:right;flex-shrink:0;">
-            <div style="font-family:var(--mono);font-size:0.92rem;font-weight:700;color:var(--text-primary);" id="asset-bal-val">0.000000</div>
+            <div style="font-family:var(--mono);font-size:0.92rem;font-weight:700;color:var(--text-primary);"
+              id="asset-bal-val">0.000000</div>
             <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">QUA</div>
           </div>
         </div>
       </div>
 
-      <div id="tab-history" class="tab-content">
-        <div id="tx-list" class="tx-list">
-          <div class="tx-empty">No transactions yet</div>
+      <div id="tab-agents" class="tab-content">
+        <div style="padding: 16px; text-align: center;">
+          <div
+            style="width: 56px; height: 56px; background: rgba(196,237,95,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 8V4H8"></path>
+              <rect x="4" y="8" width="16" height="12" rx="2"></rect>
+              <path d="M2 14h2"></path>
+              <path d="M20 14h2"></path>
+              <path d="M15 13v2"></path>
+              <path d="M9 13v2"></path>
+            </svg>
+          </div>
+          <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 8px;">No Active Agents</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 20px;">Deploy an AI agent from the
+            Agent Platform to manage it here.</p>
+          <button class="btn btn-primary btn-sm" style="width: auto; padding: 10px 20px;">Deploy Agent</button>
         </div>
       </div>
+
+      <div id="tab-history" class="tab-content">
+        <div id="tx-list" class="tx-list">
+          <div class="tx-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+              style="margin-bottom:12px; opacity: 0.2;">
+              <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path>
+              <path d="M21 3v5h-5"></path>
+            </svg>
+            No transactions yet
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="bottom-nav">
+      <button class="bottom-nav-item tab active" data-target="tab-assets">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2" />
+          <path d="M12 12h.01" />
+        </svg>
+        <span>Assets</span>
+      </button>
+      <button class="bottom-nav-item tab" data-target="tab-agents">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M12 8V4H8"></path>
+          <rect x="4" y="8" width="16" height="12" rx="2"></rect>
+          <path d="M2 14h2"></path>
+          <path d="M20 14h2"></path>
+          <path d="M15 13v2"></path>
+          <path d="M9 13v2"></path>
+        </svg>
+        <span>Agents</span>
+      </button>
+      <button class="bottom-nav-item tab" data-target="tab-history">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        <span>Activity</span>
+      </button>
     </div>
   </div>
 
@@ -294,8 +392,9 @@
 
       <!-- Add account button (hidden when at limit) -->
       <button id="btn-add-account" class="btn btn-ghost full-width" style="margin-bottom:8px;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:6px;vertical-align:middle">
-          <path d="M12 5v14M5 12h14"/>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          style="margin-right:6px;vertical-align:middle">
+          <path d="M12 5v14M5 12h14" />
         </svg>
         Add Account
       </button>
@@ -323,7 +422,12 @@
   <div id="export-panel" class="side-panel bottom-up" style="z-index: 101;">
     <div class="panel-handle"></div>
     <div class="panel-header">
-      <h3>Export Keys</h3><button class="close-panel" data-panel="export-panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg></button>
+      <h3>Export Keys</h3><button class="close-panel" data-panel="export-panel"><svg width="16" height="16"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round">
+          <path d="M19 12H5" />
+          <path d="M12 19l-7-7 7-7" />
+        </svg></button>
     </div>
     <div class="panel-body">
       <div class="warn-banner" style="margin-top:0;">
@@ -337,12 +441,17 @@
       </div>
 
       <div id="export-key-result" class="hidden">
-        <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">Combined Keys — Falcon-512 (sk|pk format)</label>
-        <p id="export-key-note" style="font-size:0.72rem;color:var(--text-muted);margin:0 0 8px;">Copy this combined key. Paste it into "Import from Private Key" to restore your wallet on any device.</p>
+        <label
+          style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">Combined
+          Keys — Falcon-512 (sk|pk format)</label>
+        <p id="export-key-note" style="font-size:0.72rem;color:var(--text-muted);margin:0 0 8px;">Copy this combined
+          key. Paste it into "Import from Private Key" to restore your wallet on any device.</p>
         <div class="key-box" id="export-key-text"></div>
         <button id="btn-copy-export" class="btn btn-primary full-width" style="margin-top:16px;">Copy Keys</button>
-        <div class="sec-item mt-4"><span class="sec-label">Signature Alg</span><span class="sec-val green">Falcon-512</span></div>
-        <div class="sec-item"><span class="sec-label">Standard</span><span class="sec-val green">NIST PQC Target 1</span></div>
+        <div class="sec-item mt-4"><span class="sec-label">Signature Alg</span><span
+            class="sec-val green">Falcon-512</span></div>
+        <div class="sec-item"><span class="sec-label">Standard</span><span class="sec-val green">NIST PQC Target
+            1</span></div>
       </div>
     </div>
   </div>
@@ -368,7 +477,8 @@
         <div class="form-group">
           <label>Lock until block height</label>
           <input id="send-unlock-height" type="number" placeholder="e.g. 100000" min="1">
-          <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Recipient cannot spend until this block. Min fee auto-set to 0.005 QUA.</p>
+          <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Recipient cannot spend until this block.
+            Min fee auto-set to 0.005 QUA.</p>
         </div>
       </div>
       <div class="form-group"><label>Wallet Password</label><input id="send-password" type="password"
@@ -420,10 +530,14 @@
     <div class="panel-body">
 
       <!-- Mode tabs: Derive | Mnemonic | Private Key -->
-      <div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-        <button id="add-tab-derive"   class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Derive</button>
-        <button id="add-tab-mnemonic" class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;">Mnemonic</button>
-        <button id="add-tab-privkey"  class="btn btn-ghost" style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;">Private Key</button>
+      <div
+        style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+        <button id="add-tab-derive" class="btn btn-ghost"
+          style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;background:var(--cyan);color:#0b0e14;font-weight:700;">Derive</button>
+        <button id="add-tab-mnemonic" class="btn btn-ghost"
+          style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;">Mnemonic</button>
+        <button id="add-tab-privkey" class="btn btn-ghost"
+          style="flex:1;border-radius:0;border:none;font-size:0.75rem;padding:7px 4px;">Private Key</button>
       </div>
 
       <!-- DERIVE section (HD derivation from same mnemonic) -->
@@ -438,36 +552,48 @@
         </div>
         <div id="derive-error" class="error-msg hidden"></div>
         <button id="btn-derive-go" class="btn btn-primary full-width" style="margin-top:8px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
           Derive Next Account
         </button>
       </div>
 
       <!-- MNEMONIC section -->
       <div id="add-section-mnemonic" style="display:none;">
-        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Import an account from a different 24-word recovery phrase.</p>
+        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Import an account
+          from a different 24-word recovery phrase.</p>
         <div class="form-group">
           <label>Recovery Phrase (24 words)</label>
-          <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24" style="font-family:var(--mono);font-size:0.82rem;"></textarea>
+          <textarea id="add-account-phrase" rows="4" placeholder="word1 word2 ... word24"
+            style="font-family:var(--mono);font-size:0.82rem;"></textarea>
         </div>
         <div class="form-group">
           <label>Derivation Index</label>
           <input id="add-account-mnemonic-index" type="number" placeholder="0" value="0" min="0">
-          <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Defaults to 0. Change this to import a different account from the phrase.</p>
+          <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">Defaults to 0. Change this to import a
+            different account from the phrase.</p>
         </div>
         <div id="add-account-error" class="error-msg hidden"></div>
-        <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import Account</button>
+        <button id="btn-add-account-go" class="btn btn-primary full-width" style="margin-top:8px;">Import
+          Account</button>
       </div>
 
       <!-- PRIVATE KEY section -->
       <div id="add-section-privkey" style="display:none;">
-        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Paste the <strong>combined key</strong> exported from the <strong>Export Keys</strong> panel (sk|pk format).</p>
+        <p class="subtitle" style="margin-bottom:10px;font-size:0.82rem;color:var(--text-secondary);">Paste the
+          <strong>combined key</strong> exported from the <strong>Export Keys</strong> panel (sk|pk format).</p>
         <div class="form-group">
           <label>Combined Key (sk|pk)</label>
-          <textarea id="add-account-sk-hex" rows="4" placeholder="Paste your exported combined key here…" style="font-family:var(--mono);font-size:0.7rem;"></textarea>
+          <textarea id="add-account-sk-hex" rows="4" placeholder="Paste your exported combined key here…"
+            style="font-family:var(--mono);font-size:0.7rem;"></textarea>
         </div>
         <div id="add-account-pk-error" class="error-msg hidden"></div>
-        <button id="btn-add-account-pk-go" class="btn btn-primary full-width" style="margin-top:8px;">Import from Key</button>
+        <button id="btn-add-account-pk-go" class="btn btn-primary full-width" style="margin-top:8px;">Import from
+          Key</button>
       </div>
 
     </div>
@@ -480,7 +606,8 @@
       <h3>Sign Message</h3><button class="close-panel" data-panel="sign-msg-panel">✕</button>
     </div>
     <div class="panel-body">
-      <p class="subtitle" style="font-size:0.8rem;margin-bottom:12px;">Sign any message with your Falcon-512 key. Used for login, identity proof, and dApp authentication.</p>
+      <p class="subtitle" style="font-size:0.8rem;margin-bottom:12px;">Sign any message with your Falcon-512 key. Used
+        for login, identity proof, and dApp authentication.</p>
       <div class="form-group">
         <label>Message</label>
         <textarea id="sign-msg-text" rows="3" placeholder="Enter message to sign…"></textarea>
@@ -492,7 +619,9 @@
       <div id="sign-msg-error" class="error-msg hidden"></div>
       <button id="btn-exec-sign-msg" class="btn btn-primary full-width" style="margin-top:10px;">Sign Message</button>
       <div id="sign-msg-result" class="hidden" style="margin-top:16px;">
-        <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Signature (hex)</label>
+        <label
+          style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Signature
+          (hex)</label>
         <div class="key-box" id="sign-msg-output" style="font-size:0.65rem;word-break:break-all;"></div>
         <button id="btn-copy-sig" class="btn btn-ghost full-width" style="margin-top:10px;">Copy Signature</button>
       </div>

@@ -528,6 +528,158 @@ function renderHistory() {
 }
 
 // ============================================================================
+// TRANSACTION BUILDER
+// ============================================================================
+
+/**
+ * Builds the binary payload matching node's Transaction::get_signing_bytes()
+ * and the JSON payload for submission.
+ */
+function buildTransactionPayload(txData, pkBytesHex, network) {
+  const enc = new TextEncoder();
+  const senderBytes = enc.encode(txData.sender);
+  const recipBytes  = enc.encode(txData.recipient || '');
+  const pkBytes = hexToBytes(pkBytesHex || '');
+  const payloadBytes = txData.payload ? new Uint8Array(txData.payload) : new Uint8Array(0);
+
+  // Compute type specific bytes
+  let typeLen = 1;
+  let typeBuf = null;
+
+  const txType = txData.tx_type || 'Transfer';
+  
+  if (txType === 'Transfer') {
+    typeBuf = new Uint8Array([0]);
+  } else if (txType === 'TimeLockTransfer') {
+    typeLen += 8;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 1;
+    writeU64LE(typeBuf, txData.unlock_height || 0, 1);
+  } else if (txType === 'MultiSigTransfer') {
+    typeLen += 1;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 2;
+    typeBuf[1] = txData.signers_required || 1;
+  } else if (txType === 'Stake') {
+    const pubkey = txData.validator_pubkey ? new Uint8Array(txData.validator_pubkey) : new Uint8Array(0);
+    typeLen += pubkey.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 3;
+    typeBuf.set(pubkey, 1);
+  } else if (txType === 'Unstake') {
+    typeBuf = new Uint8Array([4]);
+  } else if (txType === 'Delegate') {
+    const valBytes = enc.encode(txData.validator_address || '');
+    typeLen += valBytes.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 8;
+    typeBuf.set(valBytes, 1);
+  } else if (txType === 'Undelegate') {
+    const valBytes = enc.encode(txData.validator_address || '');
+    typeLen += valBytes.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 9;
+    typeBuf.set(valBytes, 1);
+  } else if (txType === 'ContractDeploy') {
+    const args = txData.init_args ? new Uint8Array(txData.init_args) : new Uint8Array(0);
+    typeLen += 1 + args.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 5;
+    typeBuf[1] = txData.template_id || 0;
+    typeBuf.set(args, 2);
+  } else if (txType === 'ContractCall') {
+    const contractBytes = enc.encode(txData.contract_address || '');
+    const methodBytes = enc.encode(txData.method || '');
+    const args = txData.call_args ? new Uint8Array(txData.call_args) : new Uint8Array(0);
+    typeLen += contractBytes.length + methodBytes.length + args.length;
+    typeBuf = new Uint8Array(typeLen);
+    typeBuf[0] = 6;
+    let o = 1;
+    typeBuf.set(contractBytes, o); o += contractBytes.length;
+    typeBuf.set(methodBytes, o); o += methodBytes.length;
+    typeBuf.set(args, o);
+  } else {
+    throw new Error('Unsupported tx_type: ' + txType);
+  }
+
+  const signingBuf = new Uint8Array(
+    senderBytes.length +
+    recipBytes.length +
+    8 + 8 + 8 + 8 + 8 +   // amount, timestamp, fee, nonce, lock_time
+    pkBytes.length +
+    1 + 4 + 4 +           // sig_scheme, network_id, payload_len
+    payloadBytes.length +
+    typeBuf.length
+  );
+
+  let off = 0;
+  signingBuf.set(senderBytes, off); off += senderBytes.length;
+  signingBuf.set(recipBytes,  off); off += recipBytes.length;
+  writeU64LE(signingBuf, txData.amount || 0,  off); off += 8;
+  writeI64LE(signingBuf, txData.timestamp || 0, off); off += 8;
+  writeU64LE(signingBuf, txData.fee || 0,     off); off += 8;
+  writeU64LE(signingBuf, txData.nonce || 0,     off); off += 8;
+  writeU64LE(signingBuf, txData.lock_time || 0,  off); off += 8;
+  signingBuf.set(pkBytes, off); off += pkBytes.length;
+  signingBuf[off++] = 0;  // sig_scheme = Falcon512
+  
+  const networkId = network === 'mainnet' ? 1 : 0;
+  signingBuf[off++] = networkId & 0xff;
+  signingBuf[off++] = (networkId >> 8) & 0xff;
+  signingBuf[off++] = (networkId >> 16) & 0xff;
+  signingBuf[off++] = (networkId >> 24) & 0xff;
+  
+  const pLen = payloadBytes.length;
+  signingBuf[off++] = pLen & 0xff;
+  signingBuf[off++] = (pLen >> 8) & 0xff;
+  signingBuf[off++] = (pLen >> 16) & 0xff;
+  signingBuf[off++] = (pLen >> 24) & 0xff;
+  if (pLen > 0) {
+    signingBuf.set(payloadBytes, off); off += pLen;
+  }
+  
+  signingBuf.set(typeBuf, off);
+
+  // Return the hex for signing and the JSON template
+  const txJson = {
+    sender: txData.sender,
+    recipient: txData.recipient || '',
+    amount: txData.amount || 0,
+    fee: txData.fee || 0,
+    nonce: txData.nonce || 0,
+    timestamp: txData.timestamp || 0,
+    signature: [],
+    public_key: Array.from(pkBytes),
+    lock_time: txData.lock_time || 0,
+    tx_type: txData.tx_type || 'Transfer', // Note: this must match Rust's enum shape if nested, but for standard Transfer it's just a string. For others, it's an object in JSON!
+    sig_scheme: 'Falcon512',
+    network_id: networkId,
+    payload: Array.from(payloadBytes)
+  };
+
+  // Adjust tx_type for Serde's internally tagged / externally tagged enums
+  if (txType !== 'Transfer' && txType !== 'Unstake') {
+    const typeObj = {};
+    if (txType === 'Delegate' || txType === 'Undelegate') {
+      typeObj[txType] = { validator_address: txData.validator_address };
+    } else if (txType === 'TimeLockTransfer') {
+      typeObj[txType] = { unlock_height: txData.unlock_height };
+    } else if (txType === 'MultiSigTransfer') {
+      typeObj[txType] = { signers_required: txData.signers_required };
+    } else if (txType === 'Stake') {
+      typeObj[txType] = { validator_pubkey: Array.from(txData.validator_pubkey) };
+    } else if (txType === 'ContractDeploy') {
+      typeObj[txType] = { template_id: txData.template_id, init_args: Array.from(txData.init_args) };
+    } else if (txType === 'ContractCall') {
+      typeObj[txType] = { contract_address: txData.contract_address, method: txData.method, call_args: Array.from(txData.call_args) };
+    }
+    txJson.tx_type = typeObj;
+  }
+
+  return { signingHex: toHex(signingBuf), txJson };
+}
+
+// ============================================================================
 // SEND TRANSACTION
 // ============================================================================
 
@@ -583,70 +735,23 @@ async function sendTransaction() {
     const amountMu  = Math.round(amount * MICROUNITS);
     const feeMu     = Math.round(fee * MICROUNITS);
     const lockTime  = 0;
-    // sig_scheme=0 (Falcon512), tx_type=0 (Transfer) — must match node's get_signing_bytes() discriminants
-
-    // ── Decode public key hex → bytes (needed for signing payload)
-    const pkBytes = hexToBytes(state.publicKey || '');
-
-    // ── Build binary signing payload matching node's Transaction::get_signing_bytes()
-    // Layout (all integers little-endian):
-    //   sender_utf8 | recipient_utf8 | amount_u64le | timestamp_i64le |
-    //   fee_u64le | nonce_u64le | lock_time_u64le | public_key_bytes |
-    //   sig_scheme_u8 (0) | tx_type_u8 (0)
-    const enc = new TextEncoder();
-    const senderBytes = enc.encode(state.address);
-    const recipBytes  = enc.encode(to);
-
-    const signingBuf = new Uint8Array(
-      senderBytes.length +
-      recipBytes.length +
-      8 + 8 + 8 + 8 + 8 +   // amount, timestamp, fee, nonce, lock_time
-      pkBytes.length +
-      1 + 4 + 4 + 1           // sig_scheme, network_id, payload_len (u32), tx_type
-    );
-    let off = 0;
-    signingBuf.set(senderBytes, off); off += senderBytes.length;
-    signingBuf.set(recipBytes,  off); off += recipBytes.length;
-    writeU64LE(signingBuf, amountMu,  off); off += 8;
-    writeI64LE(signingBuf, timestamp, off); off += 8;
-    writeU64LE(signingBuf, feeMu,     off); off += 8;
-    writeU64LE(signingBuf, nonce,     off); off += 8;
-    writeU64LE(signingBuf, lockTime,  off); off += 8;
-    signingBuf.set(pkBytes, off); off += pkBytes.length;
-    signingBuf[off++] = 0;  // sig_scheme = Falcon512
-    const networkId = state.settings.network === 'mainnet' ? 1 : 0;
-    signingBuf[off++] = networkId & 0xff;
-    signingBuf[off++] = (networkId >> 8) & 0xff;
-    signingBuf[off++] = (networkId >> 16) & 0xff;
-    signingBuf[off++] = (networkId >> 24) & 0xff;
-    signingBuf[off++] = 0; // payload_len byte 0
-    signingBuf[off++] = 0; // payload_len byte 1
-    signingBuf[off++] = 0; // payload_len byte 2
-    signingBuf[off++] = 0; // payload_len byte 3
-    signingBuf[off++] = 0;  // tx_type    = Transfer
-
-    const signingHex   = toHex(signingBuf);
-    const signatureHex = wasm.sign_transaction(signingHex, skHex);
-
-    // ── Convert hex → byte arrays (serde_json deserializes Vec<u8> as [u8] array, not hex string)
-    const sigBytes = Array.from(hexToBytes(signatureHex));
-    const pkBytesArr = Array.from(hexToBytes(state.publicKey || ''));
-
-    // ── Build TX payload for submission
-    const tx = {
-      sender:     state.address,
-      recipient:  to,
-      amount:     amountMu,
-      fee:        feeMu,
-      nonce,
+    // ── Build binary signing payload and JSON object
+    const txData = {
+      tx_type: 'Transfer',
+      sender: state.address,
+      recipient: to,
+      amount: amountMu,
       timestamp,
-      signature:  sigBytes,
-      public_key: pkBytesArr,
-      lock_time:  lockTime,
-      tx_type:    'Transfer',
-      sig_scheme: 'Falcon512',
-      network_id: networkId,
+      fee: feeMu,
+      nonce,
+      lock_time: lockTime
     };
+
+    const { signingHex, txJson: tx } = buildTransactionPayload(txData, state.publicKey, state.settings.network);
+    
+    // Sign payload
+    const signatureHex = wasm.sign_transaction(signingHex, skHex);
+    tx.signature = Array.from(hexToBytes(signatureHex));
 
     // ── Broadcast to /api/transactions/submit
     const resp = await fetch(rpcUrl('/api/transactions/submit'), {

@@ -104,6 +104,7 @@ extension/
 
 ## Version History
 
+- 1.0.5 -- Added support for Native Contracts (`ContractDeploy`, `ContractCall`, etc.) via `buildTransactionPayload`; added UI for renaming accounts
 - 1.0.4 -- Session expiry fix (MV3 service worker wake detection); deterministic HD key derivation fix; /transactions page in QuaScan
 - 1.0.3 -- dApp RPC sign message support; activity history; auto-lock improvements
 - 1.0.2 -- Multi-account HD wallet; account switching; encrypted storage

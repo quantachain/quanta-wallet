@@ -65,6 +65,15 @@ class QuantaProvider {
   async signMessage(message) {
     return this._sendRequest("signMessage", [message]);
   }
+
+  /**
+   * Sign a transaction with the active account's Falcon-512 private key.
+   * @param {object} transaction The transaction object to sign
+   * @returns {Promise<object>} Signed transaction object
+   */
+  async signTransaction(transaction) {
+    return this._sendRequest("signTransaction", [transaction]);
+  }
 }
 
 // Attach to window
